@@ -1,6 +1,9 @@
 // Merge independent edits; never guess how to interleave two model conversations.
 const groups = [['messages', 'context', 'publicSources'], ['draft', 'source', 'materials'], ['title']];
-export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Chromium storage may reorder object properties. Equality must compare data,
+// not insertion order, for both migration verification and three-way merges.
+const canonical=value=>JSON.stringify(value,(_key,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.keys(v).sort().map(k=>[k,v[k]])):v);
+export const same = (a, b) => canonical(a) === canonical(b);
 const defaults = {draft:'', source:null, materials:[], messages:[], publicSources:[]};
 const values = (chat, keys) => keys.map(k => chat?.[k] ?? defaults[k]);
 export function mergeChat(current, incoming, base) {

@@ -10,6 +10,7 @@ import {officialFetch} from './network.js';
 import {downloadPublic} from './public-network.js';
 import {diagnosticAction} from './shared/web-diagnostics.js';
 import {chatAction} from './shared/chats.js';
+import {ChatStorage} from './chat-storage.js';
 import {API} from './shared/core.js';
 import {saveExport, exportFolder} from './vault-files.js';
 import {uiDocument} from './ui-document.js';
@@ -31,7 +32,14 @@ export default class NoteChatPlugin extends Plugin {
       this.accountIdentity = this.account.publicIdentity();
       if (this.account.record) this.authStatus = '账号已连接，可以选择模型并聊天。';
     } catch (e) { this.authStatus = e.message; }
-    this.storage = {get: keys => this.getStorage(keys), set: values => this.setStorage(values), remove: keys => this.removeStorage(keys)};
+    const settingsStorage = {get: keys => this.getStorage(keys), set: values => this.setStorage(values), remove: keys => this.removeStorage(keys)};
+    this.storage = new ChatStorage(path.join(this.pluginDirectory,'chat-storage'),settingsStorage,
+      changes=>this.broadcast({type:'storageChanged',changes,area:'local'}),async()=>{
+        if(!this.data.chatStore)return;
+        // The verified migration backup and new index already exist on disk.
+        const next={...this.data};delete next.chatStore;
+        await this.saveData(next);this.data=next;
+      });
     this.registerView(VIEW, leaf => new ChatView(leaf, this));
     this.addRibbonIcon('messages-square', '打开伴读侧栏', () => this.activate());
     this.addCommand({id: 'open-sidebar', name: '打开伴读侧栏', callback: () => this.activate()});
@@ -237,7 +245,12 @@ class ChatView extends ItemView {
       try { const result = await this.plugin.handle(this, msg); this.post({type: 'rpcResult', rpcId: msg.rpcId, result: {ok: true, ...result}}); }
       catch (e) { this.post({type: 'rpcResult', rpcId: msg.rpcId, result: {ok: false, error: e.message}}); }
     };
-    this.registerDomEvent(window, 'message', receive); this.frame.srcdoc = uiDocument({html, script, css, katexCss, base, channel: this.channel});
+    // Bind every existing and newly opened host window. Source + channel checks
+    // keep this view isolated when its iframe is moved between windows.
+    const bound=new WeakSet();const bind=win=>{if(!win||bound.has(win))return;bound.add(win);this.registerDomEvent(win,'message',receive);};
+    bind(this.contentEl.ownerDocument.defaultView);
+    this.plugin.app.workspace.iterateAllLeaves(leaf=>bind(leaf.view.containerEl?.ownerDocument.defaultView));
+    this.registerEvent(this.plugin.app.workspace.on('window-open',(_win,win)=>bind(win.win||win.document?.defaultView||win))); this.frame.srcdoc = uiDocument({html, script, css, katexCss, base, channel: this.channel});
   }
   dispose() { this.plugin.cancelStreams(this); this.plugin.views.delete(this); this.frame?.remove(); this.markReady(); }
   async onClose() { this.dispose(); }

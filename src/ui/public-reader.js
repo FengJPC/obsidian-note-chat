@@ -32,6 +32,8 @@ export function htmlContent(html,baseURL){
  for(const node of root.querySelectorAll('a[data-public-href]')){
   try{const url=publicUrl(new URL(node.getAttribute('data-public-href'),baseURL).href);if(url===publicUrl(baseURL)||seen.has(url)||url.length>2000)continue;seen.add(url);linkCount++;if(links.length<20)links.push({url,title:(node.textContent||node.getAttribute('title')||url).replace(/\s+/g,' ').trim().slice(0,120)});}catch{}
  }
+ // Keep table columns distinct even when the source HTML has no whitespace.
+ for(const cell of root.querySelectorAll('td,th'))cell.append(' | ');
  for(const br of root.querySelectorAll('br'))br.replaceWith('\n');
  for(const block of root.querySelectorAll('p,div,section,h1,h2,h3,h4,li,tr,pre'))block.append('\n');
  const text=(root.textContent||'').replace(/[ \t\r\f]+/g,' ').replace(/ *\n */g,'\n').replace(/\n{3,}/g,'\n\n').trim();

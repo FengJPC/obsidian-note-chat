@@ -8,3 +8,5 @@ Edge 和 Obsidian 各自携带可独立发布的模块；`shared-modules.json` �
 - `--record` 仅更新本地校验记录；不会复制、覆盖对方代码，也不会提交或推送。
 
 主要协议：`chat-sync.js` 的版本与三方合并、`context-budget.js` 的完整回合预算、`token-policy.js` 的刷新时机，以及联网解析与诊断模块。聊天存储操作必须继续由宿主串行执行。
+
+聊天存储 v2：chatStore 只含摘要索引，chat:<id> 保存完整正文，chatLegacyBackup 保留升级前数据。界面请求使用 compact:true，按需读取单个正文；全文搜索显式扫描。宿主必须将全部聊天操作（包括读取与迁移）放在同一串行队列中。Obsidian 将这些键映射为 chat-storage/ 下的独立 JSON，临时文件写完后重命名，最后提交索引。

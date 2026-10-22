@@ -1,7 +1,7 @@
 {
   "id": "note-chat-sidebar",
   "name": "伴读侧栏 · Note Chat",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "minAppVersion": "1.7.2",
   "description": "在笔记旁使用自己的 ChatGPT 账号聊天，按需读取笔记，管理各库独立历史并保存 Markdown。",
   "author": "FengJPC",

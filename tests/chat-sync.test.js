@@ -6,7 +6,7 @@ function fixture() {
   let data = {}, queue = Promise.resolve();
   const storage = {get: async keys => Object.fromEntries(keys.map(k => [k, structuredClone(data[k])])), set: async x => {Object.assign(data, structuredClone(x));}, remove: async () => {}};
   const run = action => {const job = queue.then(() => chatAction(storage, action)); queue = job.catch(() => {}); return job;};
-  return {run, read: () => structuredClone(data.chatStore)};
+  return {run, read: () => structuredClone({...data.chatStore,chats:data.chatStore.chats.map(c=>data["chat:"+c.id])})};
 }
 async function windows() {
   const f = fixture(), {store} = await f.run({op:'load'});

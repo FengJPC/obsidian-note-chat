@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {generationWatch,recoverInterrupted} from '../src/shared/generation.js';
+import {generationWatch,recoverInterrupted,streamCheckpoint} from '../src/shared/generation.js';
 test('silent requests abort, active requests still have an overall limit',async()=>{
  for(const active of [false,true]){
   const c=new AbortController(),w=generationWatch(c,{idleMs:30,totalMs:90});
@@ -15,3 +15,9 @@ test('reopening recovers unfinished messages, preserves partial text and complet
 });
 
 test('opening another window does not recover a live generation; expired requests still recover',()=>{const c={messages:[{role:'assistant',pending:true,content:'partial',startedAt:Date.now()}]};assert.equal(recoverInterrupted(c),false);c.messages[0].startedAt=Date.now()-920000;assert.equal(recoverInterrupted(c),true);assert.equal(c.messages[0].content,'partial');});
+
+test('slow checkpoints coalesce queued deltas and serialize the final latest write',async()=>{
+ let release,started;const gate=new Promise(r=>release=r),ready=new Promise(r=>started=r);let writes=0,active=0,maxActive=0,value='first';const saved=[];
+ const checkpoint=streamCheckpoint(async()=>{writes++;maxActive=Math.max(maxActive,++active);if(writes===1){started();await gate;}saved.push(value);active--;},e=>{throw e;},{heartbeat:100000});
+ const first=checkpoint.flush();await ready;value='latest';for(let i=0;i<100;i++)checkpoint.flush();assert.equal(writes,1);checkpoint.close();release();await first;await new Promise(r=>setTimeout(r,10));assert.equal(writes,2);assert.equal(maxActive,1);assert.equal(saved.at(-1),'latest');
+});

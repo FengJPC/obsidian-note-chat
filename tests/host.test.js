@@ -5,15 +5,15 @@ import vm from 'node:vm';
 import {createRequire} from 'node:module';
 import {uiDocument} from '../src/ui-document.js';
 
-function loadPlugin() {
+function loadPlugin(extra = {}) {
   const source = fs.readFileSync(new URL('../dist/note-chat-sidebar/main.js', import.meta.url), 'utf8');
   class TFile { constructor(path) { this.path = path; this.extension = path.split('.').at(-1); } }
   const menus = [];
   class Menu { static forEvent() {const menu = new Menu(); menus.push(menu); return menu;} addItem(cb) {this.items ||= []; const item = {setTitle(title) {this.title=title;return this;},setIcon() {return this;},onClick(callback) {this.callback=callback;return this;}}; cb(item); this.items.push(item); return this;} showAtPosition(position, doc) {this.position=position;this.doc=doc;} }
-  const obsidian = {Plugin: class {}, ItemView: class {}, PluginSettingTab: class {}, Setting: class {}, MarkdownView: class {}, Notice: class {}, TFile, Menu};
+  const obsidian = {Plugin: class {}, ItemView: class {registerDomEvent(win,type,listener){win.addEventListener(type,listener);}registerEvent(){}}, PluginSettingTab: class {}, Setting: class {}, MarkdownView: class {}, Notice: class {}, TFile, Menu};
   const localRequire = createRequire(import.meta.url), module = {exports: {}};
-  vm.runInNewContext(source, {module, exports: module.exports, require: id => id === 'obsidian' ? obsidian : id === 'electron' ? {} : localRequire(id), crypto, Buffer, process, URL, URLSearchParams, AbortSignal, AbortController, TextEncoder, TextDecoder, atob, btoa, structuredClone, setTimeout, clearTimeout, console});
-  return {Plugin: module.exports.default, TFile, Menu, menus};
+  vm.runInNewContext(source+"\nmodule.exports.AuditChatView=ChatView;", {module, exports: module.exports, require: id => id === 'obsidian' ? obsidian : id === 'electron' ? {} : localRequire(id), crypto, Buffer, process, URL, URLSearchParams, AbortSignal, AbortController, TextEncoder, TextDecoder, atob, btoa, structuredClone, setTimeout, clearTimeout, console,...extra});
+  return {Plugin: module.exports.default, ChatView:module.exports.AuditChatView, TFile, Menu, menus};
 }
 test('built Obsidian host reads the latest editor text only when requested', async () => {
   const {Plugin, TFile} = loadPlugin(), plugin = new Plugin();
@@ -153,4 +153,14 @@ test('closing a view cancels its model and public reads but leaves other views a
   plugin.requests=new Map([['a:model',a]]);plugin.publicRequests=new Map([['a:read',b],['b:read',other]]);
   plugin.cancelStreams({id:'a'});assert.equal(a.signal.aborted,true);assert.equal(b.signal.aborted,true);assert.equal(other.signal.aborted,false);
   plugin.cancelStreams();assert.equal(other.signal.aborted,true);
+});
+
+test('ChatView receives RPC in its owner window and follows moves to existing/new popouts',async()=>{
+ const main=new EventTarget(),popout=new EventTarget(),later=new EventTarget();let opened,handled=0;
+ const {ChatView}=loadPlugin({window:main});const plugin={pluginDirectory:new URL('../dist/note-chat-sidebar/',import.meta.url).pathname.replace(/^\/(.:)/,'$1'),manifest:{id:'fixture',dir:'fixture'},views:new Set(),app:{vault:{adapter:{getResourcePath:()=> 'http://fixture/ui.html'}},workspace:{iterateAllLeaves:fn=>fn({view:{containerEl:{ownerDocument:{defaultView:main}}}}),on:(_event,fn)=>{opened=fn;return {};}}},handle:async()=>{handled++;return {};}};
+ // Decode filesystem URL because this checkout contains non-ASCII directories.
+ plugin.pluginDirectory=decodeURIComponent(plugin.pluginDirectory);
+ const view=new ChatView({},plugin);view.contentEl={ownerDocument:{defaultView:popout},empty(){},addClass(){},createEl(){return {contentWindow:{postMessage(){}},srcdoc:''};}};await view.onOpen();
+ const emit=(target,source=view.frame.contentWindow,channel=view.channel)=>{const e=new Event('message');Object.assign(e,{source,data:{channel,rpcId:1,type:'uiReady'}});target.dispatchEvent(e);};
+ emit(popout);assert.equal(handled,1);emit(main);assert.equal(handled,2);opened(null,{document:{defaultView:later}});emit(later);assert.equal(handled,3);emit(later,{});emit(later,view.frame.contentWindow,'wrong');assert.equal(handled,3);
 });

@@ -1,10 +1,10 @@
 # 数据与隐私 / Data and privacy
 
-伴读侧栏 0.2.0。独立第三方项目，作者 FengJPC。
+伴读侧栏 0.3.0。独立第三方项目，作者 FengJPC。
 
 ## 保存与传输
 
-每个 Obsidian 笔记库独立保存本插件的对话、上下文、尚未发送草稿、用户提供的附件、生成文件、模型和界面设置。位于库的 `.obsidian/plugins/note-chat-sidebar/data.json`，是普通 JSON，不是系统加密的机密库。其他有权限访问笔记库的软件、插件或同步服务可能读取它。
+每个 Obsidian 笔记库独立保存本插件的对话、上下文、尚未发送草稿、用户提供的附件、生成文件、模型和界面设置。聊天、上下文、附件和快照位于库的 `.obsidian/plugins/note-chat-sidebar/chat-storage/`，设置和诊断位于同目录 `data.json`，是普通 JSON，不是系统加密的机密库。其他有权限访问笔记库的软件、插件或同步服务可能读取它。
 
 账号身份、访问/刷新/身份令牌单独存入库外的本机凭据文件，并使用系统加密。Windows 为 `%LOCALAPPDATA%/NoteChatObsidian/`，优先可用的 Electron safeStorage，否则 Windows 当前用户 DPAPI。凭据按笔记库路径区分，安装的 host ID 为本机应用的随机标识。没有可用的系统加密时不写明文令牌。加密不能防止已控制当前用户会话的恶意软件。
 
@@ -26,14 +26,14 @@
 
 直接读取会检验系统 DNS 的实际地址并固定到本次连接，拒绝内网、回环和保留地址，不自动跟随跳转。仅当系统 DNS 返回 198.18.0.0/15 代理映射地址时，插件通过固定的 Cloudflare DNS-over-HTTPS 端点解析目标域名的 IPv4 地址。Cloudflare 会看到域名和网络地址，不接收完整 URL、笔记、聊天或账号凭据。解析失败不放宽检查。实现参照 [Cloudflare JSON DNS 文档](https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/dns-json/)。
 
-正文快照每个对话最多 8 份/480000 字符，保存在本库 data.json；查找和分段读取产生的内容也可能作为工具结果进入已发送上下文。清空快照不清除历史上下文；删除对话才会移除该对话的本地聊天与快照。
+正文快照每个对话最多 8 份/480000 字符，保存在本库 chat-storage/ 的对应对话文件；查找和分段读取产生的内容也可能作为工具结果进入已发送上下文。清空快照不清除历史上下文；删除对话才会移除该对话的本地聊天与快照。
 
 诊断默认在联网时记录，保留最近最多 50 次请求/2 MB，和历史一样存于本库 data.json，可能被笔记库同步工具同步。记录经过筛选的查询、网址、实际可见的状态、长度、时间与错误摘要，不主动保存完整正文、附件、请求头或令牌。导出再次脱敏，但网址和查询仍可能含私人内容。设置中可关闭记录、导出或清空诊断。
 
 ## 清除、同步和更新
 
 历史可以在侧栏删除。断开清除本库的加密登录令牌文件，保留不含令牌的登记与账号选择供后续复用，但不会撤销 OpenAI 服务端的应用授权；请在 ChatGPT 设置撤销。导出文件需在笔记库自行管理。
-删除插件 data.json 可清除本库历史和设置；请先备份需要的数据。卸载不会自动删除普通目录内的导出笔记或所有库外授权文件。
-我们不提供跨库或云同步，但用户配置的笔记库同步/备份软件可能同步 data.json 和导出笔记。迁移设备、移动库路径后需要重新登录。
+删除插件 data.json 和 chat-storage/ 可清除本库历史、设置和升级备份；请先备份需要的数据。旧聊天迁移时保留 chat-storage/legacy-backup.json，删除当前会话不会自动修改该备份，确认迁移完整后可自行删除备份。卸载不会自动删除普通目录内的导出笔记或所有库外授权文件。
+我们不提供跨库或云同步，但用户配置的笔记库同步/备份软件可能同步 data.json、chat-storage/（含升级备份）和导出笔记。迁移设备、移动库路径后需要重新登录。
 
-English: Chats, drafts, attachments and preferences are stored separately in each vault's plugin data.json. OAuth tokens are protected by local system encryption outside the vault and never exported with Markdown. Only user-submitted or explicitly requested material is sent to OpenAI. No publisher backend, telemetry, advertising, automatic vault-wide scanning or command execution is provided. Third-party vault sync tools may copy chat data. Non-secret client registrations and vault-specific selections are kept as local JSON outside the vault, shared on this device for registration reuse. Tokens stay separately encrypted per vault and are never shared across vaults. Disconnect clears this vault's local tokens while preserving registration metadata; revoke server-side access in ChatGPT settings.
+English: Chats, drafts and attachments are stored as separate files in each vault's plugin chat-storage/ directory; preferences remain in data.json. Migration retains a legacy-backup.json that may contain subsequently deleted conversations until the backup is removed. OAuth tokens are protected by local system encryption outside the vault and never exported with Markdown. Only user-submitted or explicitly requested material is sent to OpenAI. No publisher backend, telemetry, advertising, automatic vault-wide scanning or command execution is provided. Third-party vault sync tools may copy chat data. Non-secret client registrations and vault-specific selections are kept as local JSON outside the vault, shared on this device for registration reuse. Tokens stay separately encrypted per vault and are never shared across vaults. Disconnect clears this vault's local tokens while preserving registration metadata; revoke server-side access in ChatGPT settings.

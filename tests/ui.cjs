@@ -9,6 +9,7 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
   const {RegistrationStore, NEW_ACCOUNT} = await import('../src/registrations.js');
   const checks = [], errors = [], requests = [], exports = []; let reads = 0, activeVault = 'A', hold = false, currentPDF;
   const stores = {A: {}, B: {}};
+  const fullStore=v=>({...stores[v].chatStore,chats:stores[v].chatStore.chats.map(c=>stores[v]['chat:'+c.id]||c)});
   const html = uiDocument({html: fs.readFileSync(path.join(runtime, 'ui.html'), 'utf8'), script: fs.readFileSync(path.join(runtime, 'ui.js'), 'utf8'), css: fs.readFileSync(path.join(runtime, 'ui.css'), 'utf8'), katexCss: fs.readFileSync(path.join(runtime, 'katex.css'), 'utf8'), base: 'http://127.0.0.1/ui.html', channel: 'fixture-channel'});
   const pageHtml = `<!doctype html><meta charset="utf-8"><style>body{margin:0;display:flex;height:100vh;background:#f8f7f3;font:16px system-ui}aside{padding:30px;flex:1}iframe{width:420px;border:0;border-left:1px solid #ddd}</style><aside><h2>Obsidian 伴读侧栏 · 界面测试</h2><p>此页面使用模拟账号与回答验证界面，不代表真实登录。</p></aside><iframe id="panel" sandbox="allow-scripts allow-same-origin"></iframe><script>
   const frame=document.getElementById('panel');
@@ -92,7 +93,7 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     await frame().locator('#prompt').fill('没有发送的草稿'); await page.waitForTimeout(500);
     await page.reload(); await frame().locator('#prompt').waitFor(); await page.waitForTimeout(800);
     assert.equal(await frame().locator('#prompt').inputValue(), '没有发送的草稿');
-    assert.equal(stores.A.chatStore.chats.filter(c => c.messages.length).length, 1);
+    assert.equal(fullStore('A').chats.filter(c => c.messages.length).length, 1);
     checks.push('Unsent blank chats stay out of history; drafts and preferences survive reopening');
     await storage.set({selectionDraft: {id: 'selection', text: '解释选中的句子', title: '研究笔记', url: 'obsidian://open?file=test'}});
     await page.waitForTimeout(400); assert.ok((await frame().locator('#prompt').inputValue()).includes('解释选中的句子'));
@@ -109,12 +110,12 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     currentPDF = pdfBuffer.toString('base64');
     const beforePDF = requests.length;
     await frame().locator('#readPage').click(); await frame().locator('.material-chip').waitFor({timeout:20000});
-    assert.ok(stores.A.chatStore.chats.find(c=>c.id===stores.A.chatStore.active).materials[0].text.includes('Quantum PDF fixture text'));
+    assert.ok(fullStore('A').chats.find(c=>c.id===stores.A.chatStore.active).materials[0].text.includes('Quantum PDF fixture text'));
     assert.equal(requests.length,beforePDF); await frame().locator('.material-chip button').click(); currentPDF = null;
     checks.push('Explicit current-PDF read decodes a host binary receipt locally and stages extracted text without sending');
     await frame().locator('#uploadInput').setInputFiles({name: 'paper.pdf', mimeType: 'application/pdf', buffer: pdfBuffer});
     await frame().locator('.material-chip').waitFor({timeout: 20000});
-    const stored = stores.A.chatStore.chats.find(c => c.id === stores.A.chatStore.active);
+    const stored = fullStore('A').chats.find(c => c.id === stores.A.chatStore.active);
     assert.ok(stored.materials[0].text.includes('Quantum PDF fixture text'));
     await frame().locator('.material-chip button').click();
     const png = Buffer.from(await frame().locator('#prompt').evaluate(() => { const canvas = document.createElement('canvas'); canvas.width = 40; canvas.height = 30; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#276d46'; ctx.fillRect(0, 0, 40, 30); return canvas.toDataURL('image/png').split(',')[1]; }), 'base64');
@@ -133,7 +134,7 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     hold = true; await frame().locator('#prompt').fill('长回答'); await frame().locator('#send').click(); await frame().locator('#stop').waitFor();
     assert.equal(await frame().locator('#effort').isDisabled(), true); await frame().locator('#stop').click(); await frame().locator('#stop').waitFor({state: 'hidden'}); hold = false;
     const count = requests.length; await page.reload(); await frame().locator('#prompt').waitFor(); await page.waitForTimeout(500);
-    assert.equal(requests.length, count); assert.ok(stores.A.chatStore.chats.some(c => c.messages.some(m => m.failed)));
+    assert.equal(requests.length, count); assert.ok(fullStore('A').chats.some(c => c.messages.some(m => m.failed)));
     checks.push('Stop locks model controls, preserves interrupted history and never auto-resends on reload');
     await page.screenshot({path: path.join(root, 'artifacts/ui-dark.png')});
     activeVault = 'B'; await page.reload(); await frame().locator('#prompt').waitFor(); await page.waitForTimeout(500);
@@ -191,7 +192,7 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     }
     for(let n=0;stores.B.selectionDraft&&n<50;n++)await page.waitForTimeout(20);
     assert.equal(requests.length,beforeSelection);assert.equal(stores.B.selectionDraft,undefined);
-    assert.ok(stores.B.chatStore.chats.find(c=>c.id===stores.B.chatStore.active).draft.includes('Quantum PDF selected text'));
+    assert.ok(fullStore('B').chats.find(c=>c.id===stores.B.chatStore.active).draft.includes('Quantum PDF selected text'));
     await page.locator('#outside').evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);});
     await page.locator('#outside').dispatchEvent('contextmenu',{bubbles:true,cancelable:true});
     assert.equal(await page.locator('.selection-menu').count(),0);

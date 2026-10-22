@@ -3,6 +3,7 @@ dist/
 artifacts/
 *.log
 data.json
+chat-storage/
 
 # Generated assets and local test/build output
 /src/ui/pdf-assets.json

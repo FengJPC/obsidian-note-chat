@@ -30,7 +30,7 @@ const root=path.resolve(__dirname,'..'),runtime=path.join(root,'dist/note-chat-s
  const articleText='PUBLIC_BODY_SENTINEL\n'+('Before output token limit. '+'x'.repeat(450)+'\n').repeat(35);
  const fc=(name,args,id)=>({type:'function_call',call_id:id,name,namespace:'public_web',arguments:JSON.stringify(args)});
  const message=text=>({type:'message',role:'assistant',content:[{type:'output_text',text}]});
- const active=()=>saved.chatStore.chats.find(c=>c.id===saved.chatStore.active);
+ const active=()=>saved['chat:'+saved.chatStore.active];
  async function stream(id,events){for(const e of events){const bytes=Buffer.from('data: '+JSON.stringify(e)+'\n\n');for(let n=0;n<bytes.length;n+=173)await page.evaluate(m=>deliver(m),{type:'streamChunk',requestId:id,chunk:Array.from(bytes.subarray(n,n+173))});}await page.evaluate(m=>deliver(m),{type:'streamEnd',requestId:id});}
  await page.exposeFunction('fixtureRPC',async m=>{
   if(m.type==='get')return {values:await storage.get(m.keys)};
@@ -49,7 +49,7 @@ const root=path.resolve(__dirname,'..'),runtime=path.join(root,'dist/note-chat-s
    assert.equal(saved.uiPrefs.webSearch,true);assert.equal(saved.uiPrefs.publicRead,true);publicUrl(m.url);downloads.push(m.url);
    if(m.url.endsWith('/hold'))return new Promise((resolve,reject)=>{pendingRead={resolve,reject};});
    let type='text/html',status=200,body;
-   if(m.url===article)body='<title>Quantum article</title><nav>NAV_SENTINEL</nav><article><p>'+articleText+'</p><math><semantics><annotation encoding="application/x-tex">E=mc^2</annotation></semantics></math><a href="/paper.pdf">Paper PDF</a><script>window.PUBLIC_INJECTION=true</script><img src="https://example.com/pixel"><iframe src="https://example.com/pixel"></iframe></article>';
+   if(m.url===article)body='<title>Quantum article</title><nav>NAV_SENTINEL</nav><article><table><tr><th>Name</th><th>Count</th><th>Speed</th></tr><tr><td>foo</td><td>12</td><td>34</td></tr></table><p>'+articleText+'</p><math><semantics><annotation encoding="application/x-tex">E=mc^2</annotation></semantics></math><a href="/paper.pdf">Paper PDF</a><script>window.PUBLIC_INJECTION=true</script><img src="https://example.com/pixel"><iframe src="https://example.com/pixel"></iframe></article>';
    else if(m.url===pdfUrl){body=pdfBytes;type='application/pdf';}
    else if(m.url.endsWith('/blocked')){status=429;body='';}
    else if(m.url.endsWith('/redirect')){status=302;body='';}
@@ -104,7 +104,7 @@ const root=path.resolve(__dirname,'..'),runtime=path.join(root,'dist/note-chat-s
   await frame().locator('#settings').click();await frame().locator('#publicRead').check();await frame().locator('#language').selectOption('en');assert.ok((await frame().locator('#settingsDialog').innerText()).includes('Enhanced public reading'));
   await frame().locator('#language').selectOption('zh-CN');await frame().locator('[data-close="settingsDialog"]').click();
   await frame().locator('#newChat').click();mode='read';await say('读一下这篇论文 '+article);
-  assert.equal(reads,0);assert.deepEqual(downloads,[article,pdfUrl]);assert.equal(active().publicSources.length,2);assert.ok(active().publicSources[0].text.includes('E=mc^2'));assert.ok(!active().publicSources[0].text.includes('NAV_SENTINEL'));assert.equal(active().publicSources[0].links[0].url,pdfUrl);assert.equal(unexpectedNetwork,0);
+  assert.equal(reads,0);assert.deepEqual(downloads,[article,pdfUrl]);assert.equal(active().publicSources.length,2);assert.match(active().publicSources[0].text,/foo \| 12 \| 34/);assert.match(active().publicSources[0].text,/Name \| Count \| Speed/);assert.ok(active().publicSources[0].text.includes('E=mc^2'));assert.ok(!active().publicSources[0].text.includes('NAV_SENTINEL'));assert.equal(active().publicSources[0].links[0].url,pdfUrl);assert.equal(unexpectedNetwork,0);
   await frame().locator('#settings').click();await frame().locator('#viewPublicSources').click();await frame().locator('#publicSourceList details summary').first().click();await frame().locator('#publicSourceList button').first().click();assert.ok(exports.at(-1).content.includes('PUBLIC PDF'));
   await page.screenshot({path:path.join(root,'artifacts/web-snapshots.png')});await frame().locator('[data-close="publicSourcesDialog"]').click();
   await frame().locator('#exportDiagnostics').click();for(let i=0;!exports.at(-1)?.name.startsWith('web-diagnostics-')&&i<100;i++)await new Promise(r=>setTimeout(r,20));const diag=JSON.parse(exports.at(-1).content);assert.ok(diag.records.flatMap(r=>r.local_calls).some(c=>c.submitted_output_chars>0));assert.ok(!exports.at(-1).content.includes('PUBLIC_BODY_SENTINEL'));
