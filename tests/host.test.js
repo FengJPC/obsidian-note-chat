@@ -36,6 +36,22 @@ test('host rejects credential writes and keeps authentication out of saved vault
   assert.equal(identity.credential.email, 'test@example.invalid'); assert.equal(saved.credential, undefined);
   await assert.rejects(plugin.handle({}, {type: 'readAllNotes'}));
   await assert.rejects(plugin.setStorage({accountRegistrations: {accessToken: 'fake'}}));
+  await assert.rejects(plugin.setStorage({authDiagnostic:{code:'fake'}}));
+  plugin.data.authDiagnostic={phase:'refresh',httpStatus:400,code:'invalid_grant'};
+  assert.equal((await plugin.getStorage(['authDiagnostic'])).authDiagnostic.code,'invalid_grant');
+});
+
+test('authorization status updates only announce actual identity transitions, preventing model-refresh loops',()=>{
+  const {Plugin}=loadPlugin(),plugin=new Plugin(),events=[];
+  let identity={subject:'fixture',email:'test@example.invalid'};
+  plugin.account={publicIdentity:()=>identity};plugin.broadcast=event=>events.push(event);
+  plugin.updateAuthStatus('Connected');
+  assert.equal(events.at(-1).changes.credential.oldValue,null);
+  plugin.updateAuthStatus('Temporary refresh failure');
+  assert.equal(events.at(-1).changes.credential,undefined);
+  identity=null;plugin.updateAuthStatus('Sign in again');
+  assert.equal(events.at(-1).changes.credential.newValue,null);
+  assert.equal(events.at(-1).changes.credential.oldValue.subject,'fixture');
 });
 
 test('built host routes saved-client selection to login without storing authentication in vault data', async () => {

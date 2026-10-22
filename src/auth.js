@@ -1,4 +1,5 @@
 import {canUseToken} from './shared/token-policy.js';
+import {authorizationError} from './shared/auth-errors.js';
 import http from 'node:http';
 import {AUTH, API, SCOPE, randomToken, challenge, verifyIdToken, modelsFrom} from './shared/core.js';
 import {chooseRegistration} from './registrations.js';
@@ -41,15 +42,16 @@ export async function loopbackListener(pending, {timeoutMs = 600000, port = 0} =
   return {finished, cancel, server};
 }
 export class Account {
-  constructor({credentials, registrations, hostId, fetcher, open, onStatus = () => {}, verify = verifyIdToken}) {
-    Object.assign(this, {credentials, registrations, hostId, fetcher, open, onStatus, verify}); this.epoch = 0;
+  constructor({credentials, registrations, hostId, fetcher, open, onStatus = () => {}, onDiagnostic = async () => {}, verify = verifyIdToken}) {
+    Object.assign(this, {credentials, registrations, hostId, fetcher, open, onStatus, onDiagnostic, verify}); this.epoch = 0; this.credentialQueue = Promise.resolve();
   }
+  mutateCredentials(action) { const job = this.credentialQueue.then(action); this.credentialQueue = job.catch(()=>{}); return job; }
   async initialize() { this.record = await this.credentials.read(); if (this.record) await this.registrations.remember(this.record); }
   publicIdentity() { const r = this.record; return r ? {email: r.email, name: r.name, subject: r.subject} : null; }
   async publicRegistrations() { const registry = await this.registrations.read(); if (this.record) registry.selected = this.record.clientId; return registry; }
   async tokenRequest(fields) {
     const r = await this.fetcher(AUTH + '/api/accounts/oauth/token', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: new URLSearchParams(fields), signal: AbortSignal.timeout(30000)});
-    if (!r.ok) throw new Error('授权接口返回 HTTP ' + r.status + '，请重新登录；请求不会自动重放。');
+    if (!r.ok) throw await authorizationError(r, fields.grant_type);
     const tokens = await r.json();
     if (!tokens.access_token || !tokens.refresh_token || !Number.isFinite(tokens.expires_in)) throw new Error('授权响应不完整。');
     if (tokens.scope === undefined && fields.grant_type === 'refresh_token') tokens.scope = this.record?.scope;
@@ -82,12 +84,15 @@ export class Account {
         if (registration && registration.subject !== identity.subject) throw new Error('所选应用登记属于其他账号，请选择对应账号重新登录。');
         if (old && (old.subject !== identity.subject || old.clientId !== callback.clientId)) throw new Error('账号与原连接不一致，请先断开，再登录新账号。');
         const record = {...identity, clientId: callback.clientId, accessToken: tokens.access_token, refreshToken: tokens.refresh_token, idToken: tokens.id_token, scope: tokens.scope, expiresAt: Date.now() + tokens.expires_in * 1000, earliestRefreshAt: tokens.earliest_refresh_at || 0};
-        await this.registrations.remember(record);
-        if (epoch !== this.epoch) return;
-        await this.credentials.write(record);
-        if (epoch !== this.epoch) { await this.credentials.clear(); return; }
-        this.record = record; this.onStatus('账号已连接，可以选择模型并聊天。');
-      } catch (e) { if (epoch === this.epoch) this.onStatus('登录未完成：' + e.message); }
+        await this.mutateCredentials(async () => {
+          if (epoch !== this.epoch) return;
+          await this.registrations.remember(record);
+          if (epoch !== this.epoch) return;
+          await this.credentials.write(record);
+          if (epoch !== this.epoch) { await this.credentials.clear(); return; }
+          this.record = record; this.onStatus('账号已连接，可以选择模型并聊天。');
+        });
+      } catch (e) { if (epoch === this.epoch) { if(e.diagnostic)await this.onDiagnostic(e.diagnostic); if(epoch === this.epoch)this.onStatus('登录未完成：' + e.message); } }
       finally { if (this.pending === listener) this.pending = null; }
     })();
     try { await this.open(u.href); } catch (e) { listener.cancel(); throw new Error('无法打开系统浏览器，请重试。'); }
@@ -97,12 +102,32 @@ export class Account {
     if (!record) throw new Error('请先连接 ChatGPT 账号。');
     if (canUseToken(record)) return record.accessToken;
     if (!this.renewing) this.renewing = (async () => {
-      const next = await this.tokenRequest({grant_type: 'refresh_token', client_id: record.clientId, refresh_token: record.refreshToken, resource: API});
+      let next;
+      try { next = await this.tokenRequest({grant_type: 'refresh_token', client_id: record.clientId, refresh_token: record.refreshToken, resource: API}); }
+      catch(e) {
+        await this.mutateCredentials(async () => {
+          if (epoch !== this.epoch || this.record !== record) return;
+          if (e.diagnostic) await this.onDiagnostic(e.diagnostic);
+          if (epoch !== this.epoch || this.record !== record) return;
+          if (e.unusable) {
+            await this.registrations.remember(record);
+            if (epoch !== this.epoch || this.record !== record) return;
+            this.record = null;
+            await this.credentials.clear();
+          }
+          if (epoch === this.epoch) this.onStatus(e.message);
+        });
+        throw e;
+      }
       if (epoch !== this.epoch || this.record !== record) throw new Error('账号已更改，已取消刷新。');
       const updated = {...record, accessToken: next.access_token, refreshToken: next.refresh_token, scope: next.scope, idToken: next.id_token || record.idToken, expiresAt: Date.now() + next.expires_in * 1000, earliestRefreshAt: next.earliest_refresh_at || 0};
-      await this.credentials.write(updated);
-      if (epoch !== this.epoch) { await this.credentials.clear(); throw new Error('账号已断开。'); }
-      this.record = updated; return updated.accessToken;
+      await this.mutateCredentials(async () => {
+        if (epoch !== this.epoch || this.record !== record) throw new Error('账号已更改，已取消刷新。');
+        await this.credentials.write(updated);
+        if (epoch !== this.epoch) { await this.credentials.clear(); throw new Error('账号已断开。'); }
+        this.record = updated;
+      });
+      return updated.accessToken;
     })().finally(() => { this.renewing = null; });
     return this.renewing;
   }
@@ -112,6 +137,6 @@ export class Account {
     return modelsFrom(await r.json());
   }
   cancelLogin() { this.epoch++; this.pending?.cancel(); this.pending = null; this.onStatus('登录已取消。'); }
-  async logout() { this.cancelLogin(); const old = this.record; this.record = null; try { if (old) await this.registrations.remember(old); } finally { await this.credentials.clear(); this.onStatus('已断开本机连接；可在 ChatGPT 设置中撤销应用授权。'); } }
+  async logout() { this.cancelLogin(); const epoch = this.epoch, old = this.record; this.record = null; await this.mutateCredentials(async () => { try { if (old) await this.registrations.remember(old); } finally { await this.credentials.clear(); if(epoch === this.epoch)this.onStatus('已断开本机连接；可在 ChatGPT 设置中撤销应用授权。'); } }); }
   dispose() { this.epoch++; this.pending?.cancel(); this.pending = null; }
 }

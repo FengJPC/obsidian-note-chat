@@ -1,11 +1,11 @@
 # 伴读侧栏 / Note Chat — Obsidian 桌面插件
 
-版本 0.2.0，作者 FengJPC。第三方个人项目，不是 OpenAI 或 Obsidian 官方产品。
+版本 0.2.1，作者 FengJPC。第三方个人项目，不是 OpenAI 或 Obsidian 官方产品。
 这是独立的 Obsidian 插件，不会修改已提交审核的 Edge 扩展。
 
 ## 安装
 
-1. 下载 `note-chat-sidebar-0.2.0.zip` 并解压，得到 `note-chat-sidebar` 文件夹。
+1. 下载 `note-chat-sidebar-0.2.1.zip` 并解压，得到 `note-chat-sidebar` 文件夹。
 2. 在目标笔记库中打开设置 → 第三方插件 → 打开插件文件夹。或手动打开该库的 `.obsidian/plugins/`；目录不存在时可自行创建。
 3. 将整个 `note-chat-sidebar` 文件夹复制进去。最终结构必须是 `.obsidian/plugins/note-chat-sidebar/manifest.json` 和 `main.js`，不要额外套一层目录。旁边的 `ui.html`、`ui.js`、`ui.css`、`katex.css` 等文件也要保留，不能只复制 main.js。
 4. 重启 Obsidian，或关闭并重新开启第三方插件。关闭“受限模式”，在已安装插件列表中启用“伴读侧栏 · Note Chat”。
@@ -95,7 +95,7 @@
 
 构建：Node.js 22+，`npm ci` → `npm run build` → `npm test` → `npm run package`。运行用户无需开发环境。
 
-从本仓库获取源码后，按上述顺序构建；安装包位于 `dist/note-chat-sidebar-0.2.0.zip`。GitHub 的源码 ZIP 不能直接作为插件安装，请先构建。
+从本仓库获取源码后，按上述顺序构建；安装包位于 `dist/note-chat-sidebar-0.2.1.zip`。GitHub 的源码 ZIP 不能直接作为插件安装，请先构建。
 
 `npm run test:web` 验证搜索引用、公共正文/PDF、快照、失败和停止流程；全部使用模拟模型与公共下载回执，不消耗真实模型额度。`npm run test:ui` 使用本机 Edge 运行模拟账号的界面测试。可选的 `npm run test:obsidian` 使用独立测试库，需要 Windows 本机已安装 Obsidian 1.14.4，并通过环境变量 `OBSIDIAN_EXECUTABLE_PATH` 指定可执行文件。
 
@@ -116,3 +116,11 @@ PolyForm Noncommercial 1.0.0，非商业使用、修改和再发布遵循 LICENS
 - 流式文字按动画帧合并刷新；已完成消息保留 DOM，避免每个增量重建全部历史。
 
 开发验证：`npm run test:concurrency` 使用隔离 Edge 中的两个真实页面，模拟模型与存储时序，覆盖旧窗口保存、冲突副本、重开、流式 DOM 稳定和上下文预算。共享逻辑维护方式见 [SHARED.md](SHARED.md)。
+
+## 0.2.1 授权错误恢复
+
+授权错误现在区分登录换码和令牌刷新，显示 HTTP 状态及已知错误码。确认刷新令牌失效时移除不可用凭据，保留已有账号登记与聊天，重新登录复用原登记。未知 HTTP 400、临时服务故障和网络错误不会自动清除连接，也不会自动重放授权请求。
+
+凭据写入、失效清理与断开操作串行执行，防止延迟完成的刷新覆盖或清除新会话。设置中的“导出授权诊断”把最近一次已记录 HTTP 授权错误导出到笔记库，只包含时间、阶段、状态码和已知错误类别；不保存响应正文、账号或令牌。诊断元数据随插件 data.json 保存。
+
+自动化测试使用合成凭据；真实账号的恢复情况仍需重新加载插件后验证。

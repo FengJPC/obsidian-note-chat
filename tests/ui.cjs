@@ -196,6 +196,17 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     await page.locator('#outside').dispatchEvent('contextmenu',{bubbles:true,cancelable:true});
     assert.equal(await page.locator('.selection-menu').count(),0);
     checks.push('Real DOM selection in reading Markdown and PDF text-layer fixtures shows the menu; clicking after selection clears stages the captured text, never sends; unrelated selections get no menu');
+    await storage.set({authDiagnostic:{at:'2026-10-23T00:00:00.000Z',phase:'refresh',httpStatus:400,code:'invalid_grant'}});
+    await frame().locator('#settings').click();
+    const exportsBefore=exports.length;
+    await frame().locator('#exportAuthDiagnostic').click();
+    await page.waitForFunction(()=>document.getElementById('panel').contentDocument.getElementById('requestStatus').textContent.includes('auth-diagnostic.json'));
+    assert.equal(exports.length,exportsBefore+1);
+    const diagnostic=JSON.parse(exports.at(-1).content);
+    assert.equal(exports.at(-1).name,'auth-diagnostic.json');assert.equal(diagnostic.lastError.code,'invalid_grant');
+    assert.deepEqual(Object.keys(diagnostic.lastError),['at','phase','httpStatus','code']);
+    await page.screenshot({path:path.join(root,'artifacts/ui-auth-diagnostic.png')});
+    checks.push('Authorization diagnostic exports safe phase, status and code through the Obsidian bridge');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(root, 'artifacts/ui-results.json'), JSON.stringify({ok: true, checks, requests: requests.length, exports: exports.length, noteReads: reads, errors}, null, 2));
     console.log(JSON.stringify({ok: true, checks}, null, 2));

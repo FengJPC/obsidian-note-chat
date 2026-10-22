@@ -26,8 +26,9 @@ export default class NoteChatPlugin extends Plugin {
     this.pluginDirectory = path.join(this.basePath, this.manifest.dir || this.app.vault.configDir + '/plugins/' + this.manifest.id);
     try {
       const realBase = await fs.realpath(this.basePath);
-      this.account = new Account({credentials: new CredentialStore(vaultKey(realBase), systemProtector(electron)), registrations: new RegistrationStore(vaultKey(realBase)), hostId: await hostIdentifier(), fetcher: officialFetch, open: url => shell.openExternal(url), onStatus: status => { this.authStatus = status; this.broadcast({type: 'storageChanged', changes: {credential: {newValue: this.account.publicIdentity()}, authStatus: {newValue: status}}, area: 'local'}); }});
+      this.account = new Account({credentials: new CredentialStore(vaultKey(realBase), systemProtector(electron)), registrations: new RegistrationStore(vaultKey(realBase)), hostId: await hostIdentifier(), fetcher: officialFetch, onDiagnostic: diagnostic => this.serialize(async () => { this.data.authDiagnostic = structuredClone(diagnostic); await this.saveData(this.data); }), open: url => shell.openExternal(url), onStatus: status => this.updateAuthStatus(status)});
       await this.account.initialize();
+      this.accountIdentity = this.account.publicIdentity();
       if (this.account.record) this.authStatus = '账号已连接，可以选择模型并聊天。';
     } catch (e) { this.authStatus = e.message; }
     this.storage = {get: keys => this.getStorage(keys), set: values => this.setStorage(values), remove: keys => this.removeStorage(keys)};
@@ -71,6 +72,7 @@ export default class NoteChatPlugin extends Plugin {
     for (const key of typeof keys === 'string' ? [keys] : keys || []) {
       if (key === 'credential') out[key] = this.account?.publicIdentity() || null;
       else if (key === 'authStatus') out[key] = this.authStatus;
+      else if (key === 'authDiagnostic') out[key] = structuredClone(this.data.authDiagnostic || null);
       else if (ALLOWED_KEYS.has(key)) out[key] = structuredClone(this.data[key]);
     }
     return out;
@@ -88,6 +90,13 @@ export default class NoteChatPlugin extends Plugin {
     const changes = {};
     for (const key of typeof keys === 'string' ? [keys] : keys) if (ALLOWED_KEYS.has(key)) { changes[key] = {oldValue: this.data[key]}; delete this.data[key]; }
     await this.saveData(this.data); this.broadcast({type: 'storageChanged', changes, area: 'local'});
+  }
+  updateAuthStatus(status) {
+    const oldValue = this.accountIdentity || null, newValue = this.account?.publicIdentity() || null;
+    const changes = {authStatus: {oldValue:this.authStatus,newValue:status}};
+    if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) changes.credential = {oldValue,newValue};
+    this.accountIdentity = newValue; this.authStatus = status;
+    this.broadcast({type:'storageChanged',changes,area:'local'});
   }
   broadcast(message) { for (const view of this.views) view.post(message); }
   trackNote() {

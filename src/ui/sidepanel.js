@@ -163,6 +163,7 @@ $('publicRead').onchange=async()=>{if(!guard()){$('publicRead').checked=prefs.pu
 $('viewPublicSources').onclick=()=>showPublicSources(chat,download);
 $('clearPublicSources').onclick=async()=>{if(!guard())return;chat.publicSources=[];await save();notice('已清空当前对话的资料快照，聊天与引用保留');};
 $('recordDiagnostics').onchange=()=>{prefs.recordDiagnostics=$('recordDiagnostics').checked;savePrefs();};
+$('exportAuthDiagnostic').onclick=async()=>{try{const {authDiagnostic}=await chrome.storage.local.get('authDiagnostic');download('auth-diagnostic.json',JSON.stringify({lastError:authDiagnostic||null},null,2));notice('已导出授权诊断（不含账号或令牌）');}catch(e){notice(e.message);}};
 $('exportDiagnostics').onclick=async()=>{try{const log=await loadDiagnostics();download('web-diagnostics-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json',diagnosticExport(log));notice('已导出联网诊断');}catch{notice('联网诊断读取失败');}};
 $('clearDiagnostics').onclick=async()=>{if(!guard())return;try{await rpc('webDiagnostics',{action:{op:'clear'}});await loadDiagnostics();notice('已清空联网诊断');}catch{notice('联网诊断清空失败');}};
 $('model').onchange=()=>{chrome.storage.local.set({selectedModel:$('model').value});effortUI();};$('effort').onchange=()=>{prefs.efforts[$('model').value]=$('effort').value;savePrefs();};$('refreshModels').onclick=models;$('export').onclick=()=>exportOne(chat);

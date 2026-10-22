@@ -3,6 +3,16 @@ let language='zh-CN';
 export function setLanguage(value){language=value==='en'?'en':'zh-CN';return language;}
 export function getLanguage(){return language;}
 const pairs=[
+ ['导出授权诊断','Export authorization diagnostics'],
+ ['已导出授权诊断（不含账号或令牌）','Authorization diagnostics exported (no account details or tokens)'],
+ ['刷新授权失败','Token refresh failed'],['登录换码失败','Sign-in token exchange failed'],
+ ['刷新凭据已失效，请在设置中重新登录已有账号。','Refresh credentials are invalid. Sign in to your registered account again in Settings.'],
+ ['应用登记被拒绝，请检查客户端配置；不会自动新建登记。','The client registration was rejected. Check the configuration; no new registration is created automatically.'],
+ ['本次登录授权码无效或已过期，请重新发起登录。','The authorization code is invalid or expired. Start sign-in again.'],
+ ['服务端暂未允许刷新，请稍后再试。','Refresh is not yet allowed by the server. Try again later.'],
+ ['授权服务暂时不可用，已保留连接，请稍后再试。','Authorization is temporarily unavailable. Credentials were preserved; try again later.'],
+ ['授权请求被拒绝，现有连接未清除；请查看授权诊断。','Authorization was rejected. Existing credentials were preserved; inspect authorization diagnostics.'],
+
  ["若系统 DNS 返回代理映射地址，使用 Cloudflare 加密解析取得公网地址；只发送域名，不发送网址路径、聊天或账号信息。","If system DNS returns proxy-mapped addresses, Cloudflare encrypted DNS resolves the public IP. Only the hostname is sent, never URL paths, chats or account data."],
  ["成功","Success"],
  ["部分内容","Partial content"],

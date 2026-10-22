@@ -9,6 +9,7 @@
     "web-diagnostics.js": "508501095bebd19026086f4cc08d40db914cab9eb6f2981b611dd74aa7f5e6df",
     "public-sources.js": "0621ac727d26d6c402eccde5aa5088e205555aa7da80d14b0a200f27d298161a",
     "response-turn.js": "b4bae7c32a17afd587968c90407be1bb9143776a75c960ad2b57a8aa98804453",
-    "chats.js": "22469abb8682542461e9ce2f54994db37029e5d07c5f34b2f2e6dbaf34beeaa1"
+    "chats.js": "22469abb8682542461e9ce2f54994db37029e5d07c5f34b2f2e6dbaf34beeaa1",
+    "auth-errors.js": "68f649df9d8162e785f31b8c2d6dca7b5bb3866f26c4d5db2ddb7b540c92cb9a"
   }
 }

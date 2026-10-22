@@ -104,3 +104,55 @@ test('refresh preserves granted scopes when omitted and respects earliest refres
   account.record.earliestRefreshAt = 0; assert.equal(await account.token(), 'next');
   assert.equal(account.record.scope, 'chatgpt.tokens.use.direct'); assert.equal(calls, 1);
 });
+
+function refreshFixture(fetcher) {
+  let saved={clientId:'oaiapp_fixture',subject:'fixture',accessToken:'FAKE_ACCESS',refreshToken:'FAKE_REFRESH',scope:'chatgpt.tokens.use.direct',expiresAt:0};
+  const statuses=[],diagnostics=[],registrations=memoryRegistrations();
+  const credentials={read:async()=>saved,write:async value=>{saved=value;},clear:async()=>{saved=null;}};
+  const account=new Account({credentials,registrations,fetcher,onStatus:s=>statuses.push(s),onDiagnostic:async d=>diagnostics.push(d)});
+  account.record=saved;
+  return {account,credentials,registrations,statuses,diagnostics,saved:()=>saved};
+}
+test('terminal refresh failure stops replay, preserves registration and exposes only safe diagnostics',async()=>{
+  let calls=0;
+  const f=refreshFixture(async()=>{calls++;return new Response(JSON.stringify({error:{code:'refresh_token_reused',message:'FAKE_SECRET_ECHO'}}),{status:400});});
+  const outcomes=await Promise.allSettled([f.account.token(),f.account.token()]);
+  assert.ok(outcomes.every(r=>r.status==='rejected'&&r.reason.message.includes('refresh_token_reused')));
+  assert.equal(calls,1);assert.equal(f.saved(),null);assert.equal(f.account.publicIdentity(),null);
+  assert.equal((await f.registrations.read()).selected,'oaiapp_fixture');
+  assert.equal(f.diagnostics[0].phase,'refresh');assert.equal(f.diagnostics[0].httpStatus,400);
+  assert.ok(!JSON.stringify(f.diagnostics).includes('FAKE_'));
+  await assert.rejects(f.account.token(),/请先连接/);assert.equal(calls,1);
+});
+test('unknown HTTP 400, temporary errors and transport failures preserve credentials without automatic retry',async()=>{
+  for(const failure of [{status:400,body:{detail:'unknown'}},{status:503,body:{error:'server_error'}},{status:400,body:{error:'invalid_client'}},null]){
+    let calls=0;
+    const f=refreshFixture(async()=>{calls++;if(!failure)throw new Error('Network unavailable');return new Response(JSON.stringify(failure.body),{status:failure.status});});
+    const old=f.saved();await assert.rejects(f.account.token());
+    assert.equal(calls,1);assert.equal(f.saved(),old);assert.equal(f.account.record,old);
+  }
+});
+test('a delayed terminal refresh failure cannot clear a replacement session',async()=>{
+  let release;const barrier=new Promise(resolve=>{release=resolve;});
+  const f=refreshFixture(async()=>{await barrier;return new Response(JSON.stringify({error:'invalid_grant'}),{status:400});});
+  const pending=f.account.token();
+  await f.account.logout();
+  // Simulate the successful completion of another authorized sign-in.
+  const replacement={...f.saved(),clientId:'oaiapp_new',subject:'new',accessToken:'NEW_ACCESS',refreshToken:'NEW_REFRESH',expiresAt:Date.now()+3600000};
+  f.account.epoch++;await f.account.mutateCredentials(async()=>{await f.credentials.write(replacement);f.account.record=replacement;});
+  release();await assert.rejects(pending,/invalid_grant/);
+  assert.equal(f.saved(),replacement);assert.equal(f.account.record,replacement);assert.equal(f.diagnostics.length,0);
+});
+test('logout and a new sign-in serialize against a pending encrypted refresh write',async()=>{
+  let releaseWrite,writeStarted;const writing=new Promise(resolve=>{writeStarted=resolve;});
+  const barrier=new Promise(resolve=>{releaseWrite=resolve;});
+  const f=refreshFixture(async()=>({ok:true,json:async()=>({access_token:'ROTATED_ACCESS',refresh_token:'ROTATED_REFRESH',expires_in:3600})}));
+  const originalWrite=f.credentials.write;
+  f.credentials.write=async value=>{if(value.accessToken==='ROTATED_ACCESS'){writeStarted();await barrier;}await originalWrite(value);};
+  const pending=f.account.token();const rejected=assert.rejects(pending,/断开/);await writing;
+  const logout=f.account.logout();f.account.epoch++;
+  const replacement={clientId:'oaiapp_new',subject:'new',accessToken:'NEW_ACCESS',refreshToken:'NEW_REFRESH'};
+  const login=f.account.mutateCredentials(async()=>{await f.credentials.write(replacement);f.account.record=replacement;});
+  releaseWrite();await Promise.all([rejected,logout,login]);
+  assert.equal(f.saved(),replacement);assert.equal(f.account.record,replacement);
+});
