@@ -1,0 +1,36 @@
+node_modules/
+dist/
+artifacts/
+*.log
+data.json
+
+# Generated assets and local test/build output
+/src/ui/pdf-assets.json
+backups/
+browser-profile*/
+browser-test-*/
+coverage/
+*.zip
+
+# Local accounts, credentials, vault data and private configuration
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+.obsidian/
+.codex/
+.agents/
+.aws/
+.ssh/
+credentials/
+registrations/
+NoteChatObsidian/
+private/
+confidential/
+*.local.json
+*.local.toml
+
+.DS_Store
+Thumbs.db
