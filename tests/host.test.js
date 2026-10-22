@@ -12,7 +12,7 @@ function loadPlugin() {
   class Menu { static forEvent() {const menu = new Menu(); menus.push(menu); return menu;} addItem(cb) {this.items ||= []; const item = {setTitle(title) {this.title=title;return this;},setIcon() {return this;},onClick(callback) {this.callback=callback;return this;}}; cb(item); this.items.push(item); return this;} showAtPosition(position, doc) {this.position=position;this.doc=doc;} }
   const obsidian = {Plugin: class {}, ItemView: class {}, PluginSettingTab: class {}, Setting: class {}, MarkdownView: class {}, Notice: class {}, TFile, Menu};
   const localRequire = createRequire(import.meta.url), module = {exports: {}};
-  vm.runInNewContext(source, {module, exports: module.exports, require: id => id === 'obsidian' ? obsidian : id === 'electron' ? {} : localRequire(id), crypto, Buffer, process, URL, URLSearchParams, AbortSignal, TextEncoder, TextDecoder, atob, btoa, structuredClone, setTimeout, clearTimeout, console});
+  vm.runInNewContext(source, {module, exports: module.exports, require: id => id === 'obsidian' ? obsidian : id === 'electron' ? {} : localRequire(id), crypto, Buffer, process, URL, URLSearchParams, AbortSignal, AbortController, TextEncoder, TextDecoder, atob, btoa, structuredClone, setTimeout, clearTimeout, console});
   return {Plugin: module.exports.default, TFile, Menu, menus};
 }
 test('built Obsidian host reads the latest editor text only when requested', async () => {
@@ -117,4 +117,24 @@ test('embedded UI assembly preserves replacement strings and neutralizes closing
   const result = uiDocument({html: '<head><link rel="stylesheet" href="ui.css"><script src="ui.js"></script>', script: 'const a="$&";const b="</script>";', css: ':root{}', katexCss: '', channel: 'test', base: 'app://test/ui.html'});
   assert.ok(result.includes('const a="$&";')); assert.ok(result.includes('const b="<\\/script>";'));
   assert.ok(!result.includes('<script src="ui.js">')); assert.ok(result.includes('window.NOTE_CHAT_CHANNEL="test"'));
+});
+
+test('public download is denied by the host unless both toggles and the live view permit it',async()=>{
+  const {Plugin}=loadPlugin(),plugin=new Plugin(),view={id:'public-view'};
+  plugin.views=new Set([view]);plugin.stoppedRequests=new Set();plugin.publicRequests=new Map();
+  for(const uiPrefs of [{},{webSearch:true},{publicRead:true},{webSearch:'true',publicRead:true}]){
+    plugin.data={uiPrefs};await assert.rejects(plugin.handle(view,{type:'publicRead',requestId:'r',url:'https://example.com'}),/开启联网/);
+  }
+  plugin.data={uiPrefs:{webSearch:true,publicRead:true}};
+  await assert.rejects(plugin.handle({id:'other'},{type:'publicRead',url:'https://example.com'}),/开启联网/);
+  plugin.stoppedRequests.add('public-view:r');await assert.rejects(plugin.handle(view,{type:'publicRead',requestId:'r',url:'https://example.com'}),/已停止/);
+  plugin.stoppedRequests.clear();await assert.rejects(plugin.handle(view,{type:'publicRead',requestId:'r',url:'https://localhost'}),/public HTTPS/);
+  assert.equal(plugin.publicRequests.size,0);
+});
+
+test('closing a view cancels its model and public reads but leaves other views alone',()=>{
+  const {Plugin}=loadPlugin(),plugin=new Plugin(),a=new AbortController(),b=new AbortController(),other=new AbortController();
+  plugin.requests=new Map([['a:model',a]]);plugin.publicRequests=new Map([['a:read',b],['b:read',other]]);
+  plugin.cancelStreams({id:'a'});assert.equal(a.signal.aborted,true);assert.equal(b.signal.aborted,true);assert.equal(other.signal.aborted,false);
+  plugin.cancelStreams();assert.equal(other.signal.aborted,true);
 });

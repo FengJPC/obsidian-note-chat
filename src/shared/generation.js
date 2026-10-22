@@ -11,6 +11,8 @@ export function recoverInterrupted(chat){
  let changed=false;
  for(let i=0;i<chat.messages.length;i++){
   const m=chat.messages[i];
+  // A recently started request may still belong to another window (15-minute watchdog).
+  if(m.pending&&Number.isFinite(m.startedAt)&&Date.now()-m.startedAt<910000)continue;
   if(m.role==='assistant'&&(m.pending||!m.content&&!m.failed&&!m.files?.length)){
    m.pending=false;m.failed=true;m.content ||= '上次生成已中断。可以重新发送问题。';
    if(chat.messages[i-1]?.role==='user')chat.messages[i-1].failed=true;

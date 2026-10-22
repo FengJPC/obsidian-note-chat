@@ -13,3 +13,5 @@ test('reopening recovers unfinished messages, preserves partial text and complet
  const c={messages:[{role:'user',content:'问'},{role:'assistant',content:'部分回答',pending:true},{role:'assistant',content:''},{role:'assistant',content:'',files:[{name:'a.md'}]}]};
  assert.equal(recoverInterrupted(c),true);assert.equal(c.messages[0].failed,true);assert.equal(c.messages[1].content,'部分回答');assert.equal(c.messages[1].pending,false);assert.match(c.messages[2].content,/已中断/);assert.equal(c.messages[3].failed,undefined);assert.equal(recoverInterrupted(c),false);
 });
+
+test('opening another window does not recover a live generation; expired requests still recover',()=>{const c={messages:[{role:'assistant',pending:true,content:'partial',startedAt:Date.now()}]};assert.equal(recoverInterrupted(c),false);c.messages[0].startedAt=Date.now()-920000;assert.equal(recoverInterrupted(c),true);assert.equal(c.messages[0].content,'partial');});

@@ -1,3 +1,4 @@
+import {canUseToken} from './shared/token-policy.js';
 import http from 'node:http';
 import {AUTH, API, SCOPE, randomToken, challenge, verifyIdToken, modelsFrom} from './shared/core.js';
 import {chooseRegistration} from './registrations.js';
@@ -94,14 +95,7 @@ export class Account {
   async token() {
     const record = this.record, epoch = this.epoch;
     if (!record) throw new Error('请先连接 ChatGPT 账号。');
-    if (record.expiresAt > Date.now() + 60000) return record.accessToken;
-    const earliestRaw = record.earliestRefreshAt;
-    const earliestNumber = Number(earliestRaw);
-    const earliest = Number.isFinite(earliestNumber) ? (earliestNumber < 1e12 ? earliestNumber * 1000 : earliestNumber) : Date.parse(earliestRaw);
-    if (earliest > Date.now()) {
-      if (record.expiresAt > Date.now()) return record.accessToken;
-      throw new Error('授权已过期，但服务端暂未允许刷新，请稍后再试或重新登录。');
-    }
+    if (canUseToken(record)) return record.accessToken;
     if (!this.renewing) this.renewing = (async () => {
       const next = await this.tokenRequest({grant_type: 'refresh_token', client_id: record.clientId, refresh_token: record.refreshToken, resource: API});
       if (epoch !== this.epoch || this.record !== record) throw new Error('账号已更改，已取消刷新。');

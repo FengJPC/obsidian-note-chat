@@ -5,6 +5,7 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
 (async () => {
   const {uiDocument} = await import('../src/ui-document.js');
   const {chatAction} = await import('../src/shared/chats.js');
+  const {diagnosticAction} = await import('../src/shared/web-diagnostics.js');
   const {RegistrationStore, NEW_ACCOUNT} = await import('../src/registrations.js');
   const checks = [], errors = [], requests = [], exports = []; let reads = 0, activeVault = 'A', hold = false, currentPDF;
   const stores = {A: {}, B: {}};
@@ -43,6 +44,7 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     if (msg.type === 'set') { await storage.set(msg.values); return {}; }
     if (msg.type === 'remove') { await storage.remove(msg.keys); return {}; }
     if (msg.type === 'chats') return chatAction(storage, msg.action);
+    if (msg.type === 'webDiagnostics') return diagnosticAction(storage, msg.action);
     if (msg.type === 'accounts') return {registry: await registrationStore().read()};
     if (msg.type === 'login') { loginChoices.push(msg.clientId); const identity = {clientId: msg.clientId && msg.clientId !== NEW_ACCOUNT ? msg.clientId : 'oaiapp_fixture', subject: 'test-user', email: 'test@example.invalid'}; await registrationStore().remember(identity); await storage.set({credential: identity, authStatus: '账号已连接，可以选择模型并聊天。'}); return {}; }
     if (msg.type === 'logout') { await storage.set({credential: null, authStatus: '已断开'}); return {}; }

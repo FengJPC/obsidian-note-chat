@@ -43,6 +43,11 @@ window.fetch = async (url, options = {}) => {
   try {
     const result = await hostCall({type: 'response', requestId, payload: JSON.parse(options.body)}, 190000);
     if (!result.ok) throw new Error(result.error);
+    if (result.status < 200 || result.status >= 300) {
+      streams.delete(requestId); signal?.removeEventListener('abort',stop);
+      if (!closed) {closed=true;control.close();}
+      return {ok:false,status:result.status,json:async()=>({error:result.apiError})};
+    }
     return {ok: true, status: result.status, body};
   } catch (e) { streams.delete(requestId); signal?.removeEventListener('abort', stop); throw e; }
 };

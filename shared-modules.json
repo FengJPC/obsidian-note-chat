@@ -1,0 +1,14 @@
+{
+  "description": "Portable logic shared by Edge and Obsidian. See SHARED.md before changing recorded revisions.",
+  "files": {
+    "chat-sync.js": "0b9302d670df20c4aed83073aa0dc24092bfa859027cb7da8869c7d26fc96db3",
+    "context-budget.js": "60b22fc0aee655bcbddadf5cf66119aed42c26239743a4eab91f40b6782bceb9",
+    "token-policy.js": "f7706b1cdbd16ffef16b3e815d3b882065ee13c49f591f2a68e09cb25eb7df7c",
+    "generation.js": "f79317ad0e6376c9a80b606c0cfad90577f9b6c99f04806a30e8eacb0bdefe55",
+    "web-search.js": "54e04ddee308250e1cc08a49c341e2b51223059e5c33c761bfadfebdda0f9ace",
+    "web-diagnostics.js": "508501095bebd19026086f4cc08d40db914cab9eb6f2981b611dd74aa7f5e6df",
+    "public-sources.js": "0621ac727d26d6c402eccde5aa5088e205555aa7da80d14b0a200f27d298161a",
+    "response-turn.js": "b4bae7c32a17afd587968c90407be1bb9143776a75c960ad2b57a8aa98804453",
+    "chats.js": "22469abb8682542461e9ce2f54994db37029e5d07c5f34b2f2e6dbaf34beeaa1"
+  }
+}

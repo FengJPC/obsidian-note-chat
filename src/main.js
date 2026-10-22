@@ -7,6 +7,8 @@ import {Account} from './auth.js';
 import {CredentialStore, systemProtector, vaultKey, hostIdentifier} from './credentials.js';
 import {RegistrationStore} from './registrations.js';
 import {officialFetch} from './network.js';
+import {downloadPublic} from './public-network.js';
+import {diagnosticAction} from './shared/web-diagnostics.js';
 import {chatAction} from './shared/chats.js';
 import {API} from './shared/core.js';
 import {saveExport, exportFolder} from './vault-files.js';
@@ -14,10 +16,10 @@ import {uiDocument} from './ui-document.js';
 import {readingContextMenu} from './selection-menu.js';
 
 const VIEW = 'note-chat-sidebar-view';
-const ALLOWED_KEYS = new Set(['chatStore', 'uiPrefs', 'modelCatalog', 'selectedModel', 'selectionDraft', 'chatHistory', 'composer', 'composerSource']);
+const ALLOWED_KEYS = new Set(['chatStore', 'uiPrefs', 'modelCatalog', 'selectedModel', 'selectionDraft', 'chatHistory', 'composer', 'composerSource', 'webDiagnostics']);
 export default class NoteChatPlugin extends Plugin {
   async onload() {
-    this.views = new Set(); this.queue = Promise.resolve(); this.requests = new Map(); this.pumps = new Map(); this.stoppedRequests = new Set();
+    this.views = new Set(); this.queue = Promise.resolve(); this.requests = new Map(); this.publicRequests = new Map(); this.pumps = new Map(); this.stoppedRequests = new Set();
     this.authStatus = '请连接 ChatGPT 账号。'; this.data = await this.loadData() || {}; this.exportDirectory = this.data.exportDirectory || 'AI 对话';
     this.basePath = this.app.vault.adapter.getBasePath?.();
     if (!this.basePath) { new Notice('伴读侧栏需要桌面版的本地笔记库。'); return; }
@@ -132,6 +134,14 @@ export default class NoteChatPlugin extends Plugin {
       case 'set': await this.serialize(() => this.setStorage(msg.values)); return {};
       case 'remove': await this.serialize(() => this.removeStorage(msg.keys)); return {};
       case 'chats': return this.serialize(() => chatAction(this.storage, msg.action));
+      case 'webDiagnostics': return this.serialize(() => diagnosticAction(this.storage, msg.action));
+      case 'publicRead': return this.startPublicRead(view, msg);
+      case 'cancelPublicRead': {
+        const key = view.id + ':' + msg.requestId;
+        this.stoppedRequests.add(key); this.publicRequests?.get(key)?.abort();
+        setTimeout(() => this.stoppedRequests.delete(key), 50000);
+        return {};
+      }
       case 'uiReady': view.markReady(); return {};
       case 'accounts': return {registry: this.account ? await this.account.publicRegistrations() : {accounts: [], selected: ''}};
       case 'login': if (!this.account) throw new Error(this.authStatus); await this.account.login(msg.clientId); return {};
@@ -171,11 +181,19 @@ export default class NoteChatPlugin extends Plugin {
       const token = await this.account.token();
       if (controller.signal.aborted || !this.views.has(view)) throw new Error('请求已停止。');
       const response = await officialFetch(API + '/responses', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token}, body: JSON.stringify({...payload, store: false, stream: true}), signal: controller.signal});
-      if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error('请求失败：HTTP ' + response.status + (error.error?.message ? ' · ' + error.error.message.slice(0, 300) : '')); }
+      if (!response.ok) { const error = await response.json().catch(() => ({})); this.requests.delete(key); return {status:response.status, apiError:{message:String(error.error?.message || '').slice(0,300)}}; }
       const pump = this.pump(view, key, msg.requestId, response.body, controller);
       this.pumps.set(key, pump);
       return {status: response.status};
     } catch (e) { this.requests.delete(key); throw e; }
+  }
+  async startPublicRead(view, msg) {
+    if (!this.views.has(view) || this.data.uiPrefs?.webSearch !== true || this.data.uiPrefs?.publicRead !== true) throw new Error('请先开启联网和增强公共读取。');
+    const key = view.id + ':' + msg.requestId;
+    if (this.stoppedRequests.has(key) || this.publicRequests.size) throw new Error('读取已停止，或已有公共资料正在读取。');
+    const controller = new AbortController(); this.publicRequests.set(key,controller);
+    try { return await downloadPublic(msg.url,{signal:controller.signal}); }
+    finally { this.publicRequests.delete(key); }
   }
   async pump(view, key, requestId, body, controller) {
     const reader = body.getReader();
@@ -188,7 +206,7 @@ export default class NoteChatPlugin extends Plugin {
     } catch (e) { view.post({type: 'streamError', requestId, error: controller.signal.aborted ? '已停止生成' : e.message}); }
     finally { await reader.cancel().catch(() => {}); reader.releaseLock(); this.requests.delete(key); this.pumps.delete(key); }
   }
-  cancelStreams(view) { for (const [key, controller] of this.requests) if (!view || key.startsWith(view.id + ':')) controller.abort(); }
+  cancelStreams(view) { for (const map of [this.requests,this.publicRequests]) for (const [key,controller] of map || []) if (!view || key.startsWith(view.id + ':')) controller.abort(); }
   onunload() { this.account?.dispose(); this.cancelStreams(); for (const view of this.views) view.dispose(); }
 }
 class ChatView extends ItemView {
