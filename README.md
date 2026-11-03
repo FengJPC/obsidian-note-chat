@@ -1,11 +1,11 @@
 # 伴读侧栏 / Note Chat — Obsidian 桌面插件
 
-版本 0.3.1，作者 FengJPC。第三方个人项目，不是 OpenAI 或 Obsidian 官方产品。
+版本 0.3.2，作者 FengJPC。第三方个人项目，不是 OpenAI 或 Obsidian 官方产品。
 这是独立的 Obsidian 插件，不会修改已提交审核的 Edge 扩展。
 
 ## 安装
 
-1. 下载 `note-chat-sidebar-0.3.1.zip` 并解压，得到 `note-chat-sidebar` 文件夹。
+1. 下载 `note-chat-sidebar-0.3.2.zip` 并解压，得到 `note-chat-sidebar` 文件夹。
 2. 在目标笔记库中打开设置 → 第三方插件 → 打开插件文件夹。或手动打开该库的 `.obsidian/plugins/`；目录不存在时可自行创建。
 3. 将整个 `note-chat-sidebar` 文件夹复制进去。最终结构必须是 `.obsidian/plugins/note-chat-sidebar/manifest.json` 和 `main.js`，不要额外套一层目录。旁边的 `ui.html`、`ui.js`、`ui.css`、`katex.css` 等文件也要保留，不能只复制 main.js。
 4. 重启 Obsidian，或关闭并重新开启第三方插件。关闭“受限模式”，在已安装插件列表中启用“伴读侧栏 · Note Chat”。
@@ -38,9 +38,9 @@
 
 - 普通聊天不会读取当前笔记，不自动扫描整个库。
 - 在 Markdown 的编辑/实时预览/阅读视图，或 PDF 可选中的文本中选中文字 → 右键“发送到伴读侧栏（草稿）”；编辑模式也可运行“将选文放入聊天草稿”命令。选文可编辑，不自动发送。选文来源路径和 Obsidian 链接仅在本地草稿提示中显示，不自动拼入发送给模型的消息；模型只接收编辑后的选文和问题。此规则适用于新发送的选文，不追溯修改历史消息。
-- “读当前笔记/PDF”按钮将最后打开的 Markdown 笔记或 PDF 加入可移除的资料草稿，发送时才交给 OpenAI。优先取编辑器中的当前文字，包含尚未写盘的编辑。
+- “读当前笔记/PDF”按钮将最后使用的 Markdown 笔记或 PDF 阅读片段加入可移除的资料草稿，发送时才交给 OpenAI。Markdown 优先取编辑器中的当前文字，包含尚未写盘的编辑。PDF 从 0.3.2 起仅读取阅读器当前页及前后各一页；首页、末页和单页文件自动缩减范围。资料标签及正文均标出当前页、读取范围和总页数，使用 PDF 文件页序（不一定等于书内印刷页码）。翻页后再次点击即可添加新的范围，已添加的片段不会跟随翻页改变。直接从已打开阅读器提取这几页文字，不把全书传进侧栏，因此大于 20 MB 的已打开图书也可按页读取。若阅读器尚未加载、页码不可用或 PDF 已切换，会明确提示，不自动退回全书/前 60 页。扫描页仍需粘贴截图。
 - 也可以明确说“读一下当前笔记”再发送；插件会按这条指令附上当前笔记。包含“不要读”“如何”“能不能”等询问或否定的句子不会自动读取。
-- 文件列表右键一篇 Markdown 笔记或 PDF → “添加到伴读侧栏（草稿）”。第一版不提供跨库搜索或自动改写/删除工具。
+- 文件列表右键一篇 Markdown 笔记或 PDF → “添加到伴读侧栏（草稿）”。PDF 必须已在阅读器中打开并定位页面，按相同的三页范围添加。第一版不提供跨库搜索或自动改写/删除工具。
 - 可粘贴图片、拖入或上传 PNG/JPG/WebP、PDF、MD/TXT/CSV/JSON/TeX/HTML/XML/YAML/LOG 文件；每次最多 3 份、单份最多 20 MB。图片最长边缩放至 2048 px。PDF 本地提取文本，最多 60 页/120000 字符，无 OCR；不执行上传文件。
 - 可渲染 Markdown 和 LaTeX，支持行内 `\(...\)`、`$...$` 及显示公式；导出转换为 Obsidian 的 `$...$` 和 `$$...$$`。
 
@@ -95,9 +95,9 @@
 
 构建：Node.js 22+，`npm ci` → `npm run build` → `npm test` → `npm run package`。运行用户无需开发环境。
 
-从本仓库获取源码后，按上述顺序构建；安装包位于 `dist/note-chat-sidebar-0.3.1.zip`。GitHub 的源码 ZIP 不能直接作为插件安装，请先构建。
+从本仓库获取源码后，按上述顺序构建；安装包位于 `dist/note-chat-sidebar-0.3.2.zip`。GitHub 的源码 ZIP 不能直接作为插件安装，请先构建。
 
-`npm run test:web` 验证搜索引用、公共正文/PDF、快照、失败和停止流程；全部使用模拟模型与公共下载回执，不消耗真实模型额度。`npm run test:ui` 使用本机 Edge 运行模拟账号的界面测试。可选的 `npm run test:obsidian` 使用独立测试库，需要 Windows 本机已安装 Obsidian 1.14.4，并通过环境变量 `OBSIDIAN_EXECUTABLE_PATH` 指定可执行文件。
+`npm run test:web` 验证搜索引用、公共正文/PDF、快照、失败和停止流程；全部使用模拟模型与公共下载回执，不消耗真实模型额度。`npm run test:ui` 使用本机 Edge 运行模拟账号的界面测试。可选的 `npm run test:obsidian` 使用独立测试库，需要 Windows 本机已安装 Obsidian，并通过环境变量 `OBSIDIAN_EXECUTABLE_PATH` 指定可执行文件；默认使用本机 Obsidian 1.15.0 的应用包，可通过 `OBSIDIAN_RUNTIME_ASAR` 指定其他已安装的 asar 文件名。它同时验证真实 PDF 阅读器的当前页、首页/末页和侧栏草稿，不使用登录或模型接口。
 
 构建产物、测试截图、备份、聊天数据和本机账号配置不提交到仓库。`src/ui/pdf-assets.json` 由构建脚本自动生成。
 主要逻辑复用 FengJPC 的 Edge 侧栏项目，Obsidian 宿主、桌面登录和库内导出为独立适配。

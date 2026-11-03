@@ -93,16 +93,20 @@ test('reading menu listeners attach once per existing/popout document and retain
   assert.equal(prevented,true); assert.deepEqual(staged,{text:'PDF 选文',path:'paper.pdf'});
 });
 
-test('active PDF replaces the prior Markdown target; binary reading happens only on explicit request', async () => {
+test('active PDF keeps its exact reader after sidebar focus and only extracts neighboring pages on request', async () => {
   const {Plugin, TFile} = loadPlugin(), plugin = new Plugin(), pdf = new TFile('研究/paper.pdf');
   let reads=0;
   plugin.lastNote = {file:new TFile('previous.md'),editor:{getValue:()=> 'prior note'}};
-  plugin.app = {workspace: {getActiveViewOfType:()=>null,activeLeaf:{view:{file:pdf}}},vault:{getName:()=> '库',getAbstractFileByPath:()=>pdf,readBinary:async()=>{reads++;return new TextEncoder().encode('%PDF fixture').buffer;}}};
-  plugin.trackNote(); assert.equal(reads,0); assert.equal(plugin.lastNote.file,pdf);
+  const pages=[], reader={pdfDocument:{numPages:300,getPage:async n=>{pages.push(n);return {getTextContent:async()=>({items:[{str:'page '+n}]})};}},pdfViewer:{currentPageNumber:150}};
+  const view={file:pdf,viewer:{child:{pdfViewer:reader}}};
+  plugin.app = {workspace: {getActiveViewOfType:()=>({file:new TFile('stale.md')}),activeLeaf:{view},iterateAllLeaves:callback=>{callback({view});callback({view:{file:pdf}});}},vault:{getName:()=> '库',getAbstractFileByPath:()=>pdf,readBinary:async()=>{reads++;throw Error('Must not read full book binary');}}};
+  plugin.trackNote(); assert.equal(reads,0); assert.deepEqual(pages,[]); assert.equal(plugin.lastNote.file,pdf);
+  plugin.app.workspace.activeLeaf={view:{}};plugin.trackNote();
   const result = await plugin.handle({}, {type:'readNote'});
-  assert.equal(reads,1); assert.equal(result.material.name,pdf.path);
-  assert.equal(Buffer.from(result.material.pdfBase64,'base64').toString(),'%PDF fixture');
-  pdf.stat={size:20000001}; await assert.rejects(plugin.noteMaterial(),/20 MB/); assert.equal(reads,1);
+  assert.equal(reads,0); assert.ok(result.material.name.includes('149–151')); assert.deepEqual(pages,[149,150,151]);
+  assert.equal(result.material.pdfBase64,undefined);
+  pdf.stat={size:200000001};reader.pdfViewer.currentPageNumber=200;
+  await plugin.noteMaterial();assert.equal(reads,0);assert.deepEqual(pages.slice(3),[199,200,201]);
 });
 
 test('reading menu visits later tabs when Obsidian stops traversal on truthy callbacks', async () => {

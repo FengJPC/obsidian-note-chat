@@ -50,7 +50,7 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     if (msg.type === 'login') { loginChoices.push(msg.clientId); const identity = {clientId: msg.clientId && msg.clientId !== NEW_ACCOUNT ? msg.clientId : 'oaiapp_fixture', subject: 'test-user', email: 'test@example.invalid'}; await registrationStore().remember(identity); await storage.set({credential: identity, authStatus: '账号已连接，可以选择模型并聊天。'}); return {}; }
     if (msg.type === 'logout') { await storage.set({credential: null, authStatus: '已断开'}); return {}; }
     if (msg.type === 'models') return {models: [{id: 'fixture-model', name: 'Test model (mock)', efforts: ['low', 'medium', 'high']}]};
-    if (msg.type === 'readNote') { reads++; return {material: currentPDF ? {id:'pdf-'+reads,name:'研究/viewed.pdf',pdfBase64:currentPDF,url:'obsidian://open?file=viewed.pdf'} : {id: 'note-' + reads, name: '研究/量子笔记.md', text: 'Quantum note: E = hbar omega.', url: 'obsidian://open?vault=Fixture&file=note.md'}}; }
+    if (msg.type === 'readNote') { reads++; return {material: currentPDF ? {id:'pdf-'+reads,url:'obsidian://open?file=viewed.pdf',...currentPDF} : {id: 'note-' + reads, name: '研究/量子笔记.md', text: 'Quantum note: E = hbar omega.', url: 'obsidian://open?vault=Fixture&file=note.md'}}; }
     if (msg.type === 'token' || msg.type === 'cancelResponse' || msg.type === 'cancelLogin' || msg.type === 'clipboard' || msg.type === 'uiReady') return {};
     if (msg.type === 'exportFile') { exports.push({name: msg.name, content: msg.content}); return {path: 'AI 对话/' + msg.name}; }
     if (msg.type === 'response') {
@@ -121,12 +121,13 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     checks.push('Selections and note button stage drafts; questions/ordinary chat do not read notes; explicit read supplies note');
     const pdf = await PDFDocument.create(); const p = pdf.addPage(); const font = await pdf.embedFont(StandardFonts.Helvetica); p.drawText('Quantum PDF fixture text', {x: 30, y: 700, font});
     const pdfBuffer = Buffer.from(await pdf.save());
-    currentPDF = pdfBuffer.toString('base64');
+    currentPDF = {name:'viewed.pdf · PDF 第 9–11 页（当前第 10 页，共 300 页）',text:'[仅提供 PDF 第 9–11 页]\nQuantum PDF fixture text',pageRange:{start:9,end:11,current:10,total:300}};
     const beforePDF = requests.length;
     await frame().locator('#readPage').click(); await frame().locator('.material-chip').waitFor({timeout:20000});
     assert.ok(fullStore('A').chats.find(c=>c.id===stores.A.chatStore.active).materials[0].text.includes('Quantum PDF fixture text'));
+    assert.ok((await frame().locator('.material-chip').textContent()).includes('9–11'));
     assert.equal(requests.length,beforePDF); await frame().locator('.material-chip button').click(); currentPDF = null;
-    checks.push('Explicit current-PDF read decodes a host binary receipt locally and stages extracted text without sending');
+    checks.push('Explicit current-PDF read stages the host page window with a visible page range, never sends automatically');
     await frame().locator('#uploadInput').setInputFiles({name: 'paper.pdf', mimeType: 'application/pdf', buffer: pdfBuffer});
     await frame().locator('.material-chip').waitFor({timeout: 20000});
     const stored = fullStore('A').chats.find(c => c.id === stores.A.chatStore.active);

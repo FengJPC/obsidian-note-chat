@@ -15,6 +15,8 @@ import {API} from './shared/core.js';
 import {saveExport, exportFolder} from './vault-files.js';
 import {uiDocument} from './ui-document.js';
 import {readingContextMenu} from './selection-menu.js';
+import {readPdfWindow} from './pdf-window.js';
+import {readUIAsset} from './ui-assets.js';
 
 const VIEW = 'note-chat-sidebar-view';
 const ALLOWED_KEYS = new Set(['chatStore', 'uiPrefs', 'modelCatalog', 'selectedModel', 'selectionDraft', 'chatHistory', 'composer', 'composerSource', 'webDiagnostics']);
@@ -108,18 +110,23 @@ export default class NoteChatPlugin extends Plugin {
   }
   broadcast(message) { for (const view of this.views) view.post(message); }
   trackNote() {
-    const view = this.app.workspace.getActiveViewOfType(MarkdownView) || this.app.workspace.activeLeaf?.view;
-    if (['md', 'pdf'].includes(view?.file?.extension)) this.lastNote = {file: view.file, editor: view.file.extension === 'md' ? view.editor : null};
+    // Track the actual focused document. A sidebar must not reselect a prior
+    // Markdown editor while the user is reading a PDF in another pane.
+    const view = this.app.workspace.activeLeaf?.view;
+    if (['md', 'pdf'].includes(view?.file?.extension)) this.lastNote = {file: view.file, view, editor: view.file.extension === 'md' ? view.editor : null};
   }
   async noteMaterial(file) {
     const source = file || this.lastNote?.file;
     if (!source || !(this.app.vault.getAbstractFileByPath(source.path) instanceof TFile) || !['md', 'pdf'].includes(source.extension)) throw new Error('请先打开一篇 Markdown 笔记或 PDF，再点击读取。');
     const url = 'obsidian://open?vault=' + encodeURIComponent(this.app.vault.getName()) + '&file=' + encodeURIComponent(source.path);
     if (source.extension === 'pdf') {
-      if (source.stat?.size > 20000000) throw new Error('上传文件最多 20 MB。');
-      const bytes = await this.app.vault.readBinary(source);
-      if (bytes.byteLength > 20000000) throw new Error('上传文件最多 20 MB。');
-      return {id: crypto.randomUUID(), name: source.path, url, pdfBase64: Buffer.from(bytes).toString('base64')};
+      // Sidebar focus must keep the exact PDF view last used, including when
+      // two panes show the same book at different page numbers.
+      const views = [];
+      this.app.workspace?.iterateAllLeaves?.(leaf => { views.push(leaf.view); });
+      const previous = this.lastNote?.view;
+      const view = previous?.file === source && (!views.length || views.includes(previous)) ? previous : views.find(v => v.file === source);
+      return {id: crypto.randomUUID(), url, ...await readPdfWindow(view, source)};
     }
     const current = this.lastNote;
     const full = current?.file.path === source.path && current.editor ? current.editor.getValue() : await this.app.vault.cachedRead(source);
@@ -235,7 +242,7 @@ class ChatView extends ItemView {
   async onOpen() {
     this.contentEl.empty(); this.contentEl.addClass('note-chat-host'); this.plugin.views.add(this);
     const dir = this.plugin.pluginDirectory;
-    const files = await Promise.all(['ui.html', 'ui.js', 'ui.css', 'katex.css'].map(name => fs.readFile(path.join(dir, name), 'utf8')));
+    const files = await Promise.all(['ui.html', 'ui.js', 'ui.css', 'katex.css'].map(name => readUIAsset(path.join(dir, name))));
     const [html, script, css, katexCss] = files;
     const base = this.plugin.app.vault.adapter.getResourcePath((this.plugin.manifest.dir || this.plugin.app.vault.configDir + '/plugins/' + this.plugin.manifest.id) + '/ui.html');
     this.frame = this.contentEl.createEl('iframe', {cls: 'note-chat-frame', attr: {title: '伴读侧栏', sandbox: 'allow-scripts allow-same-origin', allow: 'clipboard-read; clipboard-write'}});

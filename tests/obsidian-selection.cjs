@@ -18,12 +18,15 @@ const net = require('node:net');
   await fs.writeFile(path.join(vault,'.obsidian','core-plugins.json'), '[]');
   await fs.writeFile(path.join(vault,'first.md'), '# First tab\nThis tab remains open to test workspace traversal.');
   await fs.writeFile(path.join(vault,'reading.md'), '# Reading selection\n\nLater reading tab: quantum research text.');
-  const pdf = await PDFDocument.create(), pdfPage = pdf.addPage([600,800]);
+  const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
-  pdfPage.drawText('Later PDF tab: selected quantum research text.', {x:40,y:720,size:16,font});
+  for(let n=1;n<=7;n++) {
+    const pdfPage=pdf.addPage([600,800]);
+    pdfPage.drawText('Later PDF tab: selected quantum research text. BOOK_PAGE_'+n, {x:40,y:720,size:12,font});
+  }
   await fs.writeFile(path.join(vault,'paper.pdf'), await pdf.save());
   await fs.writeFile(path.join(profile,'obsidian.json'), JSON.stringify({vaults:{'ab1234ef5678abcd':{path:vault,ts:Date.now(),open:true}}}));
-  const runtime = 'obsidian-1.14.4.asar';
+  const runtime = process.env.OBSIDIAN_RUNTIME_ASAR || 'obsidian-1.15.0.asar';
   await fs.copyFile(path.join(process.env.APPDATA,'obsidian',runtime), path.join(profile,runtime));
   let browser, context, processHandle;
   try {
@@ -42,6 +45,7 @@ const net = require('node:net');
     let window=context.pages()[0];
     if(!window)window=await context.waitForEvent('page');
     await window.waitForFunction(() => globalThis.app?.workspace?.layoutReady, null, {timeout:45000});
+    window.on('pageerror', error=>console.error('Test vault page error:',error.message));
     await window.evaluate(() => {
       const win=window.electron?.remote?.getCurrentWindow();
       win?.webContents.setBackgroundThrottling(false);win?.showInactive();
@@ -59,6 +63,11 @@ const net = require('node:net');
       reading.view.previewMode.containerEl.dataset.noteChatTest='reading';
     });
     console.log('Real reading view opened.');
+    // Obsidian 1.15 asks whether to trust this newly generated fixture vault.
+    // This profile contains only our generated notes, PDF, and built plugin.
+    const trust=window.getByRole('button',{name:/信任仓库作者并启用插件|Trust.*enable plugins/i});
+    try { await trust.waitFor({timeout:5000}); await trust.click(); }
+    catch(error) { if(await trust.count())throw error; }
     const checks=[];
     async function exercise(name, selector, expected, screenshot) {
       await window.locator(selector).first().waitFor({state:'visible',timeout:20000});
@@ -88,6 +97,34 @@ const net = require('node:net');
       leaf.view.contentEl.dataset.noteChatTest='pdf';
     });
     await exercise('paper.pdf','[data-note-chat-test="pdf"] .textLayer span','selected quantum','obsidian-pdf-menu.png');
+    const pdfLeaf=await window.evaluateHandle(()=>app.workspace.getLeavesOfType('pdf').find(leaf=>leaf.view.file?.path==='paper.pdf'));
+    await window.waitForFunction(()=>app.workspace.getLeavesOfType('pdf').find(leaf=>leaf.view.file?.path==='paper.pdf')?.view.viewer?.child?.pdfViewer?.pdfDocument?.numPages===7);
+    for(const [current,start,end] of [[4,3,5],[1,1,2],[7,6,7]]) {
+      const receipt=await window.evaluate(async ({current,pdfLeaf})=>{
+        const plugin=app.plugins.plugins['note-chat-sidebar'];
+        app.workspace.setActiveLeaf(pdfLeaf,{focus:true});
+        const reader=pdfLeaf.view.viewer.child.pdfViewer;
+        reader.pdfViewer.currentPageNumber=current;
+        plugin.trackNote();
+        // A fresh right pane can be deferred until explicitly revealed.
+        const sidebar=app.workspace.getLeavesOfType('note-chat-sidebar-view')[0];
+        if(sidebar) {await app.workspace.revealLeaf(sidebar);await sidebar.loadIfDeferred?.();}
+        await Promise.race([plugin.activate(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Sidebar did not become ready')),20000))]);
+        const material=await plugin.noteMaterial();
+        return {material,pageAfter:reader.pdfViewer.currentPageNumber,requests:plugin.requests.size};
+      },{current,pdfLeaf});
+      console.log('Real PDF receipt:',JSON.stringify({name:receipt.material.name,range:receipt.material.pageRange,pageAfter:receipt.pageAfter}));
+      assert.deepEqual(receipt.material.pageRange,{current,start,end,total:7});
+      for(let n=1;n<=7;n++)assert.equal(receipt.material.text.includes('BOOK_PAGE_'+n),n>=start&&n<=end);
+      assert.equal(receipt.material.pdfBase64,undefined);
+      assert.equal(receipt.pageAfter,current);assert.equal(receipt.requests,0);
+      checks.push({pdfCurrentPage:current,pageRange:[start,end],wholeBook:false,automaticRequests:0});
+    }
+    const panel=window.frameLocator('iframe.note-chat-frame');
+    await panel.locator('#readPage').click();
+    await panel.locator('.material-chip').waitFor();
+    assert.ok((await panel.locator('.material-chip').textContent()).includes('6–7'));
+    await window.screenshot({path:path.join(project,'artifacts/obsidian-pdf-window.png')});
     await fs.writeFile(path.join(project,'artifacts','obsidian-selection-results.json'),JSON.stringify({checks,directory,realObsidian:true},null,2));
     console.log(JSON.stringify(checks));
   } catch(error) {
