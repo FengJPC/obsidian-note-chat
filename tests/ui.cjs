@@ -73,7 +73,14 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
   });
   const frame = () => page.frameLocator('#panel');
   async function ready() { await frame().locator('#prompt').waitFor(); await page.waitForFunction(() => document.getElementById('panel').contentDocument?.getElementById('requestStatus')?.textContent.includes('连接')); }
-  async function say(text) { await frame().locator('#prompt').fill(text); await frame().locator('#send').click(); await frame().locator('#stop').waitFor({state: 'hidden', timeout: 20000}); }
+  async function say(text) {
+    const before=requests.length;
+    await frame().locator('#prompt').fill(text); await frame().locator('#send').click();
+    // Preparing a note is asynchronous; Stop is still hidden before dispatch.
+    for(let n=0;requests.length===before&&n<200;n++)await page.waitForTimeout(25);
+    assert.ok(requests.length>before,'Message must dispatch before waiting for completion');
+    await frame().locator('#stop').waitFor({state: 'hidden', timeout: 20000});
+  }
   try {
     await page.goto('http://127.0.0.1:' + server.address().port); await ready();
     assert.equal(await frame().locator('#send').isDisabled(), true); assert.equal(reads, 0);
@@ -95,13 +102,20 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     assert.equal(await frame().locator('#prompt').inputValue(), '没有发送的草稿');
     assert.equal(fullStore('A').chats.filter(c => c.messages.length).length, 1);
     checks.push('Unsent blank chats stay out of history; drafts and preferences survive reopening');
-    await storage.set({selectionDraft: {id: 'selection', text: '解释选中的句子', title: '研究笔记', url: 'obsidian://open?file=test'}});
-    await page.waitForTimeout(400); assert.ok((await frame().locator('#prompt').inputValue()).includes('解释选中的句子'));
+    await storage.set({selectionDraft: {id: 'selection', text: 'resolve', title: 'private-selection/paper.pdf', url: 'obsidian://open?vault=PrivateVault&file=private-selection%2Fpaper.pdf'}});
+    await page.waitForTimeout(400); assert.ok((await frame().locator('#prompt').inputValue()).includes('resolve'));
+    assert.ok((await frame().locator('#source').textContent()).includes('private-selection/paper.pdf'));
     assert.equal(requests.length, 1);
     await frame().locator('#readPage').click(); await frame().locator('.material-chip').waitFor();
     assert.equal(reads, 1); assert.equal(requests.length, 1);
     await frame().locator('.material-chip button').click();
-    await say('你能读一下当前笔记吗'); assert.equal(reads, 1);
+    await say('resolve翻译'); assert.equal(reads, 1);
+    const selectionInput=requests.at(-1).input.filter(item=>item.role==='user').at(-1);
+    assert.deepEqual(selectionInput.content,[{type:'input_text',text:'resolve翻译'}]);
+    assert.ok(!JSON.stringify(requests.at(-1)).includes('private-selection'));
+    assert.ok(!JSON.stringify(requests.at(-1)).includes('PrivateVault'));
+    assert.equal(fullStore('A').chats.find(c=>c.id===stores.A.chatStore.active).messages.filter(m=>m.role==='user').at(-1).content,'resolve翻译');
+    checks.push('Selection origin is visible only as a local draft hint; model request and new user message contain only the edited selection/question');
     await say('读一下当前笔记'); assert.equal(reads, 2);
     assert.ok(JSON.stringify(requests.at(-1).input).includes('Quantum note'));
     checks.push('Selections and note button stage drafts; questions/ordinary chat do not read notes; explicit read supplies note');
