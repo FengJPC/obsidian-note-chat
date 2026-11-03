@@ -125,6 +125,37 @@ const net = require('node:net');
     await panel.locator('.material-chip').waitFor();
     assert.ok((await panel.locator('.material-chip').textContent()).includes('6–7'));
     await window.screenshot({path:path.join(project,'artifacts/obsidian-pdf-window.png')});
+    await panel.locator('.material-chip button').click();
+    // Exercise the real settings controls, persisted host preferences and the
+    // actual PDF reader together, without signing in or sending any messages.
+    for(const [mode,start,end] of [['current',4,4],['window',2,4],['all',1,7]]) {
+      await panel.locator('#settings').click();
+      await panel.locator('#pdfReadMode').selectOption(mode);
+      if(mode==='window') {
+        await panel.locator('#pdfBefore').fill('2');await panel.locator('#pdfBefore').press('Tab');
+        await panel.locator('#pdfAfter').fill('0');await panel.locator('#pdfAfter').press('Tab');
+      }
+      await window.waitForFunction(mode=>app.plugins.plugins['note-chat-sidebar'].data.uiPrefs?.pdfRead?.mode===mode,mode);
+      if(mode==='window')await window.waitForFunction(()=>{const o=app.plugins.plugins['note-chat-sidebar'].data.uiPrefs.pdfRead;return o.before===2&&o.after===0;});
+      await panel.locator('[data-close="settingsDialog"]').click();
+      const receipt=await window.evaluate(async ({pdfLeaf})=>{
+        const plugin=app.plugins.plugins['note-chat-sidebar'];
+        app.workspace.setActiveLeaf(pdfLeaf,{focus:true});
+        pdfLeaf.view.viewer.child.pdfViewer.pdfViewer.currentPageNumber=4;
+        plugin.trackNote();await plugin.activate();
+        return {material:await plugin.noteMaterial(),requests:plugin.requests.size};
+      },{pdfLeaf});
+      assert.deepEqual(receipt.material.pageRange,{start,end,current:4,total:7});
+      assert.equal(receipt.material.pdfMode,mode);assert.equal(receipt.requests,0);
+      for(let n=1;n<=7;n++)assert.equal(receipt.material.text.includes('BOOK_PAGE_'+n),n>=start&&n<=end);
+      await panel.locator('#readPage').click();await panel.locator('.material-chip').waitFor();
+      assert.ok((await panel.locator('.material-chip').textContent()).includes(mode==='all'?'全文':start+'–'+end));
+      await panel.locator('.material-chip button').click();
+      checks.push({pdfMode:mode,pageRange:[start,end],persistedSettings:true,automaticRequests:0});
+      console.log('Real PDF setting passed:',mode,start,end);
+    }
+    await panel.locator('#settings').click();
+    await window.screenshot({path:path.join(project,'artifacts/obsidian-pdf-settings.png')});
     await fs.writeFile(path.join(project,'artifacts','obsidian-selection-results.json'),JSON.stringify({checks,directory,realObsidian:true},null,2));
     console.log(JSON.stringify(checks));
   } catch(error) {

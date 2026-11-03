@@ -1,4 +1,5 @@
 import {chatSaver} from '../shared/chat-sync.js';
+import {pdfReadOptions} from '../pdf-options.js';
 import {budgetContext} from '../shared/context-budget.js';
 import {t,setLanguage,captureUI} from './i18n.js';
 import {transferFiles,isFileTransfer} from './attachment-transfer.js';
@@ -92,7 +93,8 @@ function render(force=false){
  $('toBottom').hidden=bottom;
 }
 function searchUI(){const enabled=prefs.webSearch===true;$('webSearch').textContent=t(enabled?'联网：开':'联网：关');$('webSearch').setAttribute('aria-pressed',String(enabled));}
-function applyPrefs(){setLanguage(prefs.language);document.documentElement.lang=prefs.language==='en'?'en':'zh-CN';document.title=t('伴读侧栏');translateStatic();searchUI();$('language').value=prefs.language;notice(lastNotice);const dark=prefs.theme==='dark'||prefs.theme==='system'&&matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.setProperty('--font',prefs.fontSize+'px');$('themeSetting').value=prefs.theme;$('fontSize').value=String(prefs.fontSize);$('publicRead').checked=prefs.publicRead===true;$('recordDiagnostics').checked=prefs.recordDiagnostics!==false;diagnosticCountUI();$('fileTools').checked=prefs.fileTools;$('fileLimit').value=String(fileLimitMB(prefs.fileLimit));}
+function pdfPrefsUI(){const options=pdfReadOptions(prefs.pdfRead);$('pdfReadMode').value=options.mode;$('pdfBefore').value=options.before;$('pdfAfter').value=options.after;$('pdfNeighborFields').hidden=options.mode!=='window';}
+function applyPrefs(){setLanguage(prefs.language);document.documentElement.lang=prefs.language==='en'?'en':'zh-CN';document.title=t('伴读侧栏');translateStatic();searchUI();pdfPrefsUI();$('language').value=prefs.language;notice(lastNotice);const dark=prefs.theme==='dark'||prefs.theme==='system'&&matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.dataset.theme=dark?'dark':'light';document.documentElement.style.setProperty('--font',prefs.fontSize+'px');$('themeSetting').value=prefs.theme;$('fontSize').value=String(prefs.fontSize);$('publicRead').checked=prefs.publicRead===true;$('recordDiagnostics').checked=prefs.recordDiagnostics!==false;diagnosticCountUI();$('fileTools').checked=prefs.fileTools;$('fileLimit').value=String(fileLimitMB(prefs.fileLimit));}
 let diagnosticCount=0;
 function diagnosticCountUI(){$('diagnosticCount').textContent=t('已保存请求：')+diagnosticCount;$('exportDiagnostics').disabled=!diagnosticCount;$('clearDiagnostics').disabled=!!controller||!diagnosticCount;}
 async function loadDiagnostics(){const {log}=await rpc('webDiagnostics',{action:{op:'load'}});diagnosticCount=log.records.length;diagnosticCountUI();return log;}
@@ -173,6 +175,7 @@ $('history').onclick=()=>{historyUI();$('historyDialog').showModal();};$('histor
 $('undo').onclick=async()=>{if(!undoChat||!guard())return;await navigate(async()=>{await mutate({op:'restore',chat:undoChat});undoChat=null;$('undo').hidden=true;await selectActive();notice('已恢复会话');});};
 $('language').onchange=async()=>{prefs.language=setLanguage($('language').value);await savePrefs();effortUI();render();draftUI();$('chatTitle').textContent=chat.title==='新对话'?t('新对话'):chat.title;await syncAccount();if($('historyDialog').open)await historyUI();};
 $('theme').onclick=()=>{prefs.theme=document.documentElement.dataset.theme==='dark'?'light':'dark';savePrefs();};$('themeSetting').onchange=()=>{prefs.theme=$('themeSetting').value;savePrefs();};$('fontSize').onchange=()=>{prefs.fontSize=Number($('fontSize').value);savePrefs();};$('fileLimit').onchange=()=>{prefs.fileLimit=fileLimitMB($('fileLimit').value);savePrefs();};$('fileTools').onchange=()=>{prefs.fileTools=$('fileTools').checked;savePrefs();};matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyPrefs);
+for(const id of ['pdfReadMode','pdfBefore','pdfAfter'])$(id).onchange=async()=>{if(!guard()){pdfPrefsUI();return;}prefs.pdfRead=pdfReadOptions({mode:$('pdfReadMode').value,before:$('pdfBefore').valueAsNumber,after:$('pdfAfter').valueAsNumber});await savePrefs();};
 $('publicRead').onchange=async()=>{if(!guard()){$('publicRead').checked=prefs.publicRead;return;}prefs.publicRead=$('publicRead').checked;await savePrefs();notice(prefs.publicRead?'增强读取已开启，联网时可按需读取公共网页和 PDF':'增强读取已关闭');};
 $('viewPublicSources').onclick=()=>showPublicSources(chat,download);
 $('clearPublicSources').onclick=async()=>{if(!guard())return;chat.publicSources=[];await save();notice('已清空当前对话的资料快照，聊天与引用保留');};

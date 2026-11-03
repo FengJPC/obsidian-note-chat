@@ -281,6 +281,20 @@ const pairs=[
  ["开启后允许模型自主搜索、打开和查找公共网页；不自动读取本地笔记","Allow the model to search and read public webpages; local notes are not read automatically"]
 ];
 pairs.push(...[["检测到另一窗口的修改，当前内容已保留为冲突副本。", "Another window changed this chat. Your work was saved as a conflict copy."], ["另一窗口正在生成，或上次生成尚未结束。", "Another window may still be generating this answer."], ["本轮资料超过上下文预算，请减少附件或读取范围后重试；原始记录仍保留。", "This turn exceeds the context budget. Reduce attachments or reading scope and retry; original records are retained."], ["回答完成（已省略 ", "Answer complete (omitted "], [" 轮较早上下文，历史记录保留）", " older turns; history retained)"]]);
+pairs.push(
+ ["PDF 默认读取范围","Default PDF reading range"],
+ ["读取方式","Read mode"],
+ ["仅当前页","Current page only"],
+ ["当前页及前后指定页数","Current page and chosen neighboring pages"],
+ ["完整文件（文字）","Entire document (text)"],
+ ["向前页数","Pages before"],
+ ["向后页数","Pages after"],
+ ["读取当前笔记；PDF 按设置中的默认范围读取，放入待发送资料","Read the current note or the configured PDF range into the draft"],
+ ["包含当前页，向前和向后可各设 0–100 页。页码按 PDF 文件页序计算；翻页后重新点击读取，已添加的草稿不会改变。","Includes the current page, with 0–100 pages on either side. Uses physical PDF page numbers. Read again after turning pages; staged drafts stay unchanged."],
+ ["完整文件提取所有页面的文字，不进行 OCR；超过 120000 字符时提示改用页码范围，不会把截断片段当作全文添加。修改设置仅影响之后的读取，所有资料仍需手动发送。","Entire document extracts text from every page without OCR. Above 120000 characters, choose a smaller range; partial text is never added as a full document. Settings affect future reads only. Materials are sent manually."],
+ ["PDF 全文超过 120000 字符，未添加到草稿；请选择当前页或自定义范围。","PDF text exceeds 120000 characters and was not added. Choose the current page or a custom range."],
+ ["普通联网已可使用 OpenAI 托管的搜索和网页读取；此开关仅增加插件本机的抓取及资料快照工具，通常可保持关闭。","Web already provides OpenAI-hosted search and page reading. This optional switch adds local fetching and snapshots; it can usually remain off."]
+);
 const translations=new Map(pairs);
 // Exact matches first; multiword fragments handle status prefixes without changing user data.
 const fragments=pairs.filter(([key])=>key.length>2).sort((a,b)=>b[0].length-a[0].length);

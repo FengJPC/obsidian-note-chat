@@ -1,7 +1,9 @@
 // Obsidian's PDF view wraps its PDF.js application in viewer.child.
 // This adapter only reads the already-open document; it never changes pages,
 // cleans up shared PDF.js objects, or falls back to reading the whole file.
-function reading(view, file) {
+import {pdfReadOptions} from './pdf-options.js';
+
+function reading(view, file, mode) {
   const reader = view?.viewer?.child?.pdfViewer;
   const doc = reader?.pdfDocument;
   if (view?.file !== file || !doc || typeof doc.getPage !== 'function') {
@@ -9,15 +11,17 @@ function reading(view, file) {
   }
   const current = reader.pdfViewer?.currentPageNumber;
   const total = doc.numPages;
-  if (!Number.isInteger(total) || total < 1 || !Number.isInteger(current) || current < 1 || current > total) {
+  if (!Number.isInteger(total) || total < 1 || (mode !== 'all' && (!Number.isInteger(current) || current < 1 || current > total))) {
     throw new Error('无法确认 PDF 当前页码，请在阅读器中定位页面后重试。');
   }
-  return {reader, doc, current, total};
+  return {reader, doc, current: Number.isInteger(current) && current >= 1 && current <= total ? current : null, total};
 }
 
-export async function readPdfWindow(view, file) {
-  const {reader, doc, current, total} = reading(view, file);
-  const start = Math.max(1, current - 1), end = Math.min(total, current + 1);
+export async function readPdfWindow(view, file, options) {
+  const {mode, before, after} = pdfReadOptions(options);
+  const {reader, doc, current, total} = reading(view, file, mode);
+  const start = mode === 'all' ? 1 : Math.max(1, current - (mode === 'current' ? 0 : before));
+  const end = mode === 'all' ? total : Math.min(total, current + (mode === 'current' ? 0 : after));
   const range = {start, end, current, total};
   let expired = false, timer;
   const ensureSame = () => {
@@ -39,17 +43,20 @@ export async function readPdfWindow(view, file) {
       const piece = '\n\n[第 ' + n + ' 页]\n' + body;
       const remaining = 120000 - text.length;
       text += piece.slice(0, remaining);
-      if (piece.length > remaining || (text.length >= 120000 && n < end)) { truncated = true; break; }
+      if (piece.length > remaining || (text.length >= 120000 && n < end)) {
+        if (mode === 'all') throw new Error('PDF 全文超过 120000 字符，未添加到草稿；请选择当前页或自定义范围。');
+        truncated = true; break;
+      }
     }
     if (!hasText) throw new Error('当前 PDF 页码范围没有可提取的文字，可能是扫描版；请粘贴页面截图。');
-    const label = 'PDF 第 ' + start + '–' + end + ' 页（当前第 ' + current + ' 页，共 ' + total + ' 页）';
-    const header = '[' + label + '；页码为 PDF 文件页序，不是书内印刷页码。仅提供此范围，未读取全书。]';
-    return {text: header + text + (truncated ? '\n[此范围内容已截断：最多 120000 字符]' : ''), pageRange: range, truncated,
+    const label = mode === 'all' ? 'PDF 全文（共 ' + total + ' 页）' : 'PDF 第 ' + start + '–' + end + ' 页（当前第 ' + current + ' 页，共 ' + total + ' 页）';
+    const header = '[' + label + '；页码为 PDF 文件页序，不是书内印刷页码。' + (mode === 'all' ? '已提取全部页面可提取的文字；未进行 OCR。' : '仅提供此范围，未读取全书。') + ']';
+    return {text: header + text + (truncated ? '\n[此范围内容已截断：最多 120000 字符]' : ''), pageRange: range, pdfMode: mode, truncated,
       name: (file.name || file.path.split('/').at(-1)) + ' · ' + label};
   };
   try {
     return await Promise.race([extract(), new Promise((_, reject) => {
-      timer = setTimeout(() => { expired = true; reject(new Error('读取 PDF 当前页超时，请等待页面加载后重试。')); }, 20000);
+      timer = setTimeout(() => { expired = true; reject(new Error('读取 PDF 当前页超时，请等待页面加载后重试。')); }, mode === 'all' ? 60000 : 20000);
     })]);
   } finally { clearTimeout(timer); }
 }

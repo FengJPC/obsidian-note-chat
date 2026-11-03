@@ -107,6 +107,10 @@ test('active PDF keeps its exact reader after sidebar focus and only extracts ne
   assert.equal(result.material.pdfBase64,undefined);
   pdf.stat={size:200000001};reader.pdfViewer.currentPageNumber=200;
   await plugin.noteMaterial();assert.equal(reads,0);assert.deepEqual(pages.slice(3),[199,200,201]);
+  plugin.data={uiPrefs:{pdfRead:{mode:'current',before:7,after:8}}};
+  await plugin.noteMaterial();assert.deepEqual(pages.slice(6),[200]);
+  plugin.data.uiPrefs.pdfRead={mode:'window',before:2,after:0};
+  await plugin.noteMaterial();assert.deepEqual(pages.slice(7),[198,199,200]);
 });
 
 test('reading menu visits later tabs when Obsidian stops traversal on truthy callbacks', async () => {

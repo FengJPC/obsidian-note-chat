@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readPdfWindow} from '../src/pdf-window.js';
+import {pdfReadOptions} from '../src/pdf-options.js';
 
 function fixture(current, total = 300, body = n => 'BOOK_PAGE_' + n) {
   const calls = [], file = {path: 'private/books/book.pdf', name: 'book.pdf', stat: {size: 200000000}};
@@ -65,4 +66,30 @@ test('blank scanned pages report missing text; bounded extraction marks truncati
   assert.ok(result.text.includes('已截断'));
   assert.ok(result.text.length<121000);
   assert.deepEqual(large.calls,[4]);
+});
+
+test('PDF options retain old defaults, accept zero neighbors and bound malformed settings', () => {
+  assert.deepEqual(pdfReadOptions(),{mode:'window',before:1,after:1});
+  assert.deepEqual(pdfReadOptions({mode:'window',before:0,after:3}),{mode:'window',before:0,after:3});
+  assert.deepEqual(pdfReadOptions({mode:'unknown',before:-8,after:999}),{mode:'window',before:0,after:100});
+  assert.deepEqual(pdfReadOptions({mode:'all',before:NaN,after:1.5}),{mode:'all',before:1,after:1});
+});
+
+test('current-page and asymmetric windows read the configured pages only', async () => {
+  for(const [options,expected] of [[{mode:'current',before:50,after:50},[5]], [{mode:'window',before:2,after:0},[3,4,5]], [{mode:'window',before:0,after:2},[5,6,7]]]) {
+    const f=fixture(5,10);
+    const result=await readPdfWindow(f.view,f.file,options);
+    assert.deepEqual(f.calls,expected);assert.equal(result.pdfMode,options.mode);
+  }
+});
+
+test('full-document mode reads beyond 60 pages and never labels a truncated result as full text', async () => {
+  const f=fixture(5,70);
+  const result=await readPdfWindow(f.view,f.file,{mode:'all'});
+  assert.equal(f.calls.length,70);assert.equal(f.calls.at(-1),70);
+  assert.equal(result.truncated,false);assert.ok(result.name.includes('全文'));
+  assert.ok(!result.text.includes('未读取全书'));assert.ok(result.text.includes('BOOK_PAGE_70'));
+  const oversized=fixture(5,10,()=> 'a'.repeat(130000));
+  await assert.rejects(readPdfWindow(oversized.view,oversized.file,{mode:'all'}),/全文超过.*未添加到草稿/);
+  assert.deepEqual(oversized.calls,[1]);
 });

@@ -126,7 +126,7 @@ export default class NoteChatPlugin extends Plugin {
       this.app.workspace?.iterateAllLeaves?.(leaf => { views.push(leaf.view); });
       const previous = this.lastNote?.view;
       const view = previous?.file === source && (!views.length || views.includes(previous)) ? previous : views.find(v => v.file === source);
-      return {id: crypto.randomUUID(), url, ...await readPdfWindow(view, source)};
+      return {id: crypto.randomUUID(), url, ...await readPdfWindow(view, source, this.data?.uiPrefs?.pdfRead)};
     }
     const current = this.lastNote;
     const full = current?.file.path === source.path && current.editor ? current.editor.getValue() : await this.app.vault.cachedRead(source);
