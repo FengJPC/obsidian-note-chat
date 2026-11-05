@@ -156,6 +156,30 @@ const net = require('node:net');
     }
     await panel.locator('#settings').click();
     await window.screenshot({path:path.join(project,'artifacts/obsidian-pdf-settings.png')});
+    await panel.locator('[data-close="settingsDialog"]').click();
+    // Restore a fixture history through the real host storage path, offline.
+    // An optional local report is never copied into tracked fixtures or packages.
+    const mathSample=process.env.NOTE_CHAT_MATH_REPORT
+      ?JSON.parse(await fs.readFile(process.env.NOTE_CHAT_MATH_REPORT,'utf8')).content
+      :await fs.readFile(path.join(project,'tests/fixtures/math-response.md'),'utf8');
+    const expectedMath=process.env.NOTE_CHAT_MATH_REPORT?20:9;
+    await window.evaluate(async content=>{
+      const plugin=app.plugins.plugins['note-chat-sidebar'];
+      const chat={id:'math-regression',title:'公式排版测试',created:Date.now(),updated:Date.now(),messages:[{role:'assistant',content}],draft:''};
+      await plugin.serialize(()=>plugin.storage.set({['chat:'+chat.id]:chat,chatStore:{version:2,active:chat.id,chats:[{...chat,summary:true,messageCount:1,blank:false,messages:undefined}]}}));
+      for(const leaf of app.workspace.getLeavesOfType('note-chat-sidebar-view'))await leaf.detach();
+      await plugin.activate();
+    },mathSample);
+    await panel.locator('.message.assistant .katex').first().waitFor();
+    assert.equal(await panel.locator('.message.assistant .katex').count(),expectedMath);
+    assert.equal(await panel.locator('.math-error,.message.assistant h1').count(),0);
+    assert.equal(await window.evaluate(()=>app.plugins.plugins['note-chat-sidebar'].requests.size),0);
+    await panel.locator('#messages').evaluate(el=>{el.scrollTop=0;});
+    await window.screenshot({path:path.join(project,'artifacts/obsidian-math-formulas.png')});
+    const formulaBodies=panel.locator('.math-display');
+    await formulaBodies.nth(2).scrollIntoViewIfNeeded();
+    await window.screenshot({path:path.join(project,'artifacts/obsidian-math-equals.png')});
+    checks.push({mathFormulas:expectedMath,noSpuriousHeadings:true,reopenedHistory:true,automaticRequests:0});
     await fs.writeFile(path.join(project,'artifacts','obsidian-selection-results.json'),JSON.stringify({checks,directory,realObsidian:true},null,2));
     console.log(JSON.stringify(checks));
   } catch(error) {

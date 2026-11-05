@@ -8,6 +8,7 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
   const {diagnosticAction} = await import('../src/shared/web-diagnostics.js');
   const {RegistrationStore, NEW_ACCOUNT} = await import('../src/registrations.js');
   const checks = [], errors = [], requests = [], exports = []; let reads = 0, activeVault = 'A', hold = false, currentPDF;
+  const mathFixture = fs.readFileSync(path.join(root,'tests/fixtures/math-response.md'),'utf8');
   const stores = {A: {}, B: {}};
   const fullStore=v=>({...stores[v].chatStore,chats:stores[v].chatStore.chats.map(c=>stores[v]['chat:'+c.id]||c)});
   const html = uiDocument({html: fs.readFileSync(path.join(runtime, 'ui.html'), 'utf8'), script: fs.readFileSync(path.join(runtime, 'ui.js'), 'utf8'), css: fs.readFileSync(path.join(runtime, 'ui.css'), 'utf8'), katexCss: fs.readFileSync(path.join(runtime, 'katex.css'), 'utf8'), base: 'http://127.0.0.1/ui.html', channel: 'fixture-channel'});
@@ -57,7 +58,7 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
       requests.push(msg.payload);
       assert.equal(msg.payload.store, false); assert.equal(msg.payload.stream, true);
       const hasOutput = msg.payload.input.at(-1)?.type === 'function_call_output';
-      const content = '你好，公式是 \\(E=\\hbar\\omega\\)。\n\n\\[\\int_0^1 x^2\\,dx=\\frac13\\]\n\n<script>window.UNSAFE=true</script><img src="https://evil.invalid/pixel">';
+      const content = '你好，公式是 \\(E=\\hbar\\omega\\)。\n\n\\[\\int_0^1 x^2\\,dx=\\frac13\\]\n\n'+mathFixture+'\n\n<script>window.UNSAFE=true</script><img src="https://evil.invalid/pixel">';
       let events;
       if (hold) events = [{type: 'response.output_text.delta', delta: '部分回答'}];
       else if (msg.payload.tools && !hasOutput) events = [
@@ -99,9 +100,14 @@ const root = path.resolve(__dirname, '..'), runtime = path.join(root, 'dist/note
     await frame().locator('#language').selectOption('zh-CN'); await frame().locator('[data-close="settingsDialog"]').click();
     await frame().locator('#effort').selectOption('high'); await say('你好');
     assert.equal(reads, 0); assert.equal(requests[0].reasoning.effort, 'high'); assert.equal(requests[0].tools, undefined);
-    assert.equal(await frame().locator('.katex').count(), 2);
+    assert.equal(await frame().locator('.katex').count(), 11);
+    assert.equal(await frame().locator('.math-error,.message.assistant h1').count(), 0);
+    assert.ok((await frame().locator('.message.assistant pre code').textContent()).includes('x\n=\ny'));
+    await frame().locator('#messages').evaluate(el=>{el.scrollTop=0;});
+    await page.screenshot({path:path.join(root,'artifacts/ui-math-formulas.png')});
     assert.equal(await frame().locator('.message.assistant script,.message.assistant img').count(), 0);
     checks.push('Isolated sidebar boots; account/model/effort, themes/languages and sanitized LaTeX response render');
+    checks.push('Multiline formulas with standalone equals render after streaming; headings and code samples stay intact');
     await frame().locator('#newChat').click(); await frame().locator('#history').click();
     assert.equal(await frame().locator('.history-item').count(), 1);
     await frame().locator('[data-close="historyDialog"]').click();
